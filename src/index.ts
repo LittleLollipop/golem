@@ -15,7 +15,7 @@ import { MemoryReader } from "./memory/reader.js";
 import { Consolidator } from "./memory/consolidator.js";
 import { InstanceRegistry } from "./registry/instance-registry.js";
 import { DriftChannel } from "./channels/drift-channel.js";
-import { RecallChannel } from "./channels/recall-channel.js";
+import { RecallChannel, GraphRecallSource } from "./channels/recall-channel.js";
 import { SituationalChannel } from "./channels/situational-channel.js";
 import { SignalBus } from "./bus/signal-bus.js";
 import { Grader } from "./agent/grader.js";
@@ -45,16 +45,13 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
   const bus = new SignalBus();
 
   const drift = new DriftChannel(reader, dsh, registry);
-  const recall = new RecallChannel();
+  const recall = new RecallChannel(new GraphRecallSource(reader));
   const situational = new SituationalChannel();
   const grader = new Grader();
   const agent = new FakerenAgent(grader, drift, recall, situational, writer, consolidator, bus, dsh);
 
-  // Invariant: a session's instance binding must never change mid-session.
-  // (registry.select already throws on conflict; this is the registered guard.)
-  dsh.registerInvariant("no-mid-switch", async () => {
-    /* enforced at select(); placeholder for runtime re-check hook */
-  });
+  // Instance binding immutability is enforced at InstanceRegistry.select()
+  // (throws on mid-session conflict); no separate runtime re-check needed.
 
   // ── Turn-time: assemble leakage into the model-visible context ──
   dsh.onPreStep(async (ev): Promise<UserMessage[]> => {

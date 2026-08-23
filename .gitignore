@@ -10,3 +10,7 @@ dist/
 # Editor / OS noise
 .DS_Store
 *.log
+
+# Python cache
+__pycache__/
+*.pyc

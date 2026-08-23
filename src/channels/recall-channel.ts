@@ -2,40 +2,51 @@
  * RecallChannel — 目标导向图检索（goal-directed graph recall, C2-separated）.
  *
  * This is the channel that surfaces targeted recalls from the agent's OWN
- * memory graph during reasoning. It is deliberately a SEPARATE code path from
- * DriftChannel: drift = "my own memory leaks" (non-goal-directed); recall =
- * "I looked something up in my own graph" (goal-directed). The two never share
- * a source. Swap `RecallSource` for a real graph-query backend later (e.g.
- * MemoryReader.recall) — the contract stays.
+ * memory graph during reasoning. It is a SEPARATE code path from DriftChannel:
+ * drift = "my own memory leaks" (non-goal-directed); recall = "I looked
+ * something up in my own graph" (goal-directed). The two never share a source.
  *
- * NOTE: this is NOT vector / RAG retrieval. The substrate is axolotl_rs (a
- * typed graph), so recall is graph traversal, not embedding similarity. No
- * vector store is involved.
+ * The substrate is axolotl_rs (a typed graph), so recall is graph traversal
+ * (keyword match over node label + props), NOT embedding similarity / RAG. No
+ * vector store is involved. The default source delegates to MemoryReader, which
+ * reaches the real graph via the sidecar (POST /{id}/recall).
  */
 
-import type { ChannelContribution, InstanceId } from "../types.js";
+import type { ChannelContribution, InstanceId, GraphNode } from "../types.js";
+import type { MemoryReader } from "../memory/reader.js";
 
 export interface RecallSource {
-  /** Returns targeted recall snippets from the agent's own memory graph. */
-  recall(userText: string, instanceId: InstanceId, limit?: number): Promise<string[]>;
+  /** Returns targeted recall nodes from the agent's own memory graph. */
+  recall(instanceId: InstanceId, keywords: string[], limit?: number): Promise<GraphNode[]>;
 }
 
-/** Default: no recall backend wired yet (keeps architecture runnable). */
-export class GraphRecallStub implements RecallSource {
-  async recall(): Promise<string[]> {
-    return [];
+/** Default source: delegates to the axolotl-backed MemoryReader (graph traversal). */
+export class GraphRecallSource implements RecallSource {
+  constructor(private readonly reader: MemoryReader) {}
+  async recall(instanceId: InstanceId, keywords: string[], limit = 20): Promise<GraphNode[]> {
+    return this.reader.recall(instanceId, keywords, undefined, limit);
   }
 }
 
+/** Light keyword extraction from free text (no stopword model yet; v1 only). */
+function toKeywords(userText: string): string[] {
+  const seen = new Set<string>();
+  for (const t of userText.toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
+    if (t.length >= 2) seen.add(t);
+  }
+  return Array.from(seen).slice(0, 12);
+}
+
 export class RecallChannel {
-  constructor(private readonly source: RecallSource = new GraphRecallStub()) {}
+  constructor(private readonly source: RecallSource) {}
 
   async gather(userText: string, instanceId: InstanceId, limit = 3): Promise<ChannelContribution[]> {
-    const facts = await this.source.recall(userText, instanceId, limit);
-    return facts.map((f, i) => ({
+    const nodes = await this.source.recall(instanceId, toKeywords(userText), limit * 4);
+    return nodes.slice(0, limit).map((n, i) => ({
       channel: "recall" as const,
-      content: `[图检索] ${f}`,
-      seedId: `recall_${i}`,
+      content: `[图检索] ${n.label}`,
+      seedId: `recall_${n.id}_${i}`,
+      valence: typeof n.valence === "number" ? n.valence : 0,
     }));
   }
 }
