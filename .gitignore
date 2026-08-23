@@ -1,0 +1,12 @@
+# Dependencies (build artifacts, never committed)
+node_modules/
+
+# Build output
+dist/
+
+# Regenerable binary semantic graph (axolotl .axeb) + lock
+.semantic-graph/
+
+# Editor / OS noise
+.DS_Store
+*.log

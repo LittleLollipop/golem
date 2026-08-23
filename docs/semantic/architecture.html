@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>假人 · 阶段三架构方案（评审稿 · 2026-08-23）</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#1f2933; --muted:#647084;
+    --line:#e3e8ee; --accent:#2563eb;
+    --l0:#cfd6df; --l1:#f6c177; --l2:#5eead4; --l3:#a5b4fc; --l4:#c4b5fd; --l5:#7dd3fc;
+    --drift:#8b5cf6; --recall:#3b82f6; --situational:#14b8a6;
+    --warn:#f59e0b; --ok:#10b981; --bad:#ef4444;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.65;font-size:15px;}
+  .wrap{display:flex;max-width:1280px;margin:0 auto;}
+  nav{position:sticky;top:0;align-self:flex-start;width:230px;height:100vh;overflow-y:auto;
+    padding:24px 16px;border-right:1px solid var(--line);background:var(--bg);flex:0 0 auto;}
+  nav h2{font-size:13px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin:0 0 10px;}
+  nav a{display:block;color:var(--ink);text-decoration:none;padding:6px 10px;border-radius:8px;font-size:13.5px;margin-bottom:2px;}
+  nav a:hover{background:#eef2f7;}
+  nav a.sub{padding-left:22px;color:var(--muted);font-size:12.5px;}
+  main{flex:1;min-width:0;padding:40px 48px 120px;}
+  header.doc{border-bottom:2px solid var(--line);padding-bottom:18px;margin-bottom:30px;}
+  header.doc h1{font-size:26px;margin:0 0 8px;}
+  header.doc .meta{color:var(--muted);font-size:13px;}
+  .badge{display:inline-block;background:#fff3d6;color:#92660a;border:1px solid #f3d99a;
+    padding:3px 10px;border-radius:20px;font-size:12.5px;font-weight:600;margin-top:10px;}
+  section{margin-bottom:56px;scroll-margin-top:20px;}
+  h2.sec{font-size:21px;border-left:5px solid var(--accent);padding-left:12px;margin:0 0 18px;}
+  h3.sub{font-size:16px;margin:26px 0 12px;color:#334155;}
+  p{margin:10px 0;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;margin:18px 0;
+    box-shadow:0 1px 3px rgba(16,24,40,.04);}
+  .card.flush{padding:8px;}
+  .diagram{width:100%;height:auto;display:block;}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;margin:14px 0;}
+  th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top;}
+  th{background:#f1f5f9;font-weight:600;color:#334155;}
+  tr:nth-child(even) td{background:#fafbfc;}
+  code{background:#eef2f7;padding:1px 6px;border-radius:5px;font-size:12.5px;font-family:"SF Mono",Menlo,Consolas,monospace;color:#b3336a;}
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11.5px;font-weight:600;}
+  .pill.drift{background:#f3e8ff;color:#6d28d9;}
+  .pill.recall{background:#e0edff;color:#1d4ed8;}
+  .pill.situational{background:#d7f7f1;color:#0f766e;}
+  .pill.ok{background:#dcfce7;color:#15803d;}
+  .pill.warn{background:#fef3c7;color:#a16207;}
+  .pill.bad{background:#fee2e2;color:#b91c1c;}
+  .constraint-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;}
+  .cbox{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;}
+  .cbox .id{font-weight:700;font-size:13px;color:var(--accent);}
+  .cbox .src{font-size:11.5px;color:var(--muted);margin-top:4px;}
+  .decision{background:#fffbeb;border:1px solid #fde68a;border-radius:14px;padding:22px 24px;margin:18px 0;}
+  .decision h3{margin:0 0 12px;color:#92660a;}
+  .decision ol{counter-reset:d;padding-left:0;list-style:none;margin:0;}
+  .decision li{counter-increment:d;position:relative;padding:10px 0 10px 38px;border-bottom:1px dashed #f3d99a;}
+  .decision li:last-child{border-bottom:none;}
+  .decision li::before{content:counter(d);position:absolute;left:0;top:9px;width:24px;height:24px;
+    background:#f59e0b;color:#fff;border-radius:50%;text-align:center;line-height:24px;font-weight:700;font-size:13px;}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--muted);margin:6px 0 0;}
+  .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px;}
+  .note{font-size:12.5px;color:var(--muted);margin-top:8px;}
+  footer.doc{border-top:1px solid var(--line);margin-top:40px;padding-top:18px;color:var(--muted);font-size:12.5px;}
+  @media (max-width:920px){nav{display:none;}main{padding:24px 16px;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav>
+  <h2>目录</h2>
+  <a href="#s0">0 · 设计约束</a>
+  <a href="#s1">1 · 分层架构</a>
+  <a href="#s2">2 · 模块划分</a>
+  <a href="#s3">3 · 三通道状态机</a>
+  <a href="#s4">4 · 数据流</a>
+  <a href="#s5">5 · 信号源契约</a>
+  <a href="#s6">6 · 维度 H 落地</a>
+  <a href="#s7">7 · 风险闭合</a>
+  <a href="#s8">8 · 待拍板点</a>
+</nav>
+<main>
+<header class="doc">
+  <h1>假人 · 阶段三架构方案</h1>
+  <div class="meta">评审稿 · 2026-08-23 · 依据 <code>/se-semantic-graph</code> 阶段三</div>
+  <div class="meta">前置：<code>requirements.md</code>（A–H 共 39 条）· <code>base-analysis.md</code>（dsh GO + C1–C3 + H1–H4）· <code>persona.md</code></div>
+  <span class="badge">本方案是评审稿，评审通过后才写码</span>
+</header>
+
+<!-- ============ 0. 约束 ============ -->
+<section id="s0">
+  <h2 class="sec">0 · 设计约束（来自已决决策，不可违反）</h2>
+  <div class="constraint-grid">
+    <div class="cbox"><div class="id">C1 生命周期跟进程</div>只在 <code>dsh web</code> 常驻期间有潜意识，人关程序即停（诚实降级 A）。<div class="src">dec_c1_247</div></div>
+    <div class="cbox"><div class="id">C2 三通道物理分离</div>漂移通道禁止借道 <code>sessionQuery</code>。<div class="src">req_channel_separation + base-analysis §4</div></div>
+    <div class="cbox"><div class="id">C3 薄适配层</div>只挂 dsh 文档化扩展点，锁 commit <code>b150a55</code>。<div class="src">base-analysis §7</div></div>
+    <div class="cbox"><div class="id">D1 axolotl_rs 唯一</div>记忆存取 = axolotl_rs 唯一，否文件/文档式记忆与日志。<div class="src">dec_memory_axolotl_only</div></div>
+    <div class="cbox"><div class="id">D2 AI 自身情绪</div>valence = AI 自身情绪（非用户情绪），L0/L0.5 漂移被其加权。<div class="src">dec_valence_ai_self</div></div>
+    <div class="cbox"><div class="id">D3 建/读分环节</div>建记忆（写）与读漏出（读）分属不同环节。<div class="src">br_extract_separate_phases</div></div>
+    <div class="cbox"><div class="id">D4 模态不可知</div>宿主对信号模态不可知，语义边界归扩展组件自管。<div class="src">decision_host_modality_agnostic</div></div>
+    <div class="cbox"><div class="id">D5 假人隔离</div>以「假人」为隔离单位：记忆/学习/漂移/情绪一切"自我"状态按假人边界互不可见；跨会话漂移全量；会话开始选定、中途不可切换。<div class="src">dec_isolation_per_instance</div></div>
+  </div>
+</section>
+
+<!-- ============ 1. 分层架构 ============ -->
+<section id="s1">
+  <h2 class="sec">1 · 分层架构</h2>
+  <div class="card flush">
+    <svg class="diagram" viewBox="0 0 920 692" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="分层架构图">
+      <defs>
+        <marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+          <path d="M0,0 L9,4.5 L0,9 Z" fill="#94a3b8"/>
+        </marker>
+      </defs>
+      <!-- layer frame -->
+      <rect x="40" y="14" width="840" height="86" rx="12" fill="#eef6ff" stroke="#bfdbfe"/>
+      <text x="56" y="46" font-size="15" font-weight="700" fill="#0369a1">L5</text>
+      <text x="56" y="66" font-size="11" fill="#64748b">表达层</text>
+      <text x="56" y="86" font-size="11" fill="#64748b">Expression</text>
+      <g font-size="13" fill="#1e3a5f">
+        <rect x="120" y="36" width="190" height="42" rx="9" fill="#7dd3fc" stroke="#38bdf8"/><text x="215" y="62" text-anchor="middle">fakeren-precompose</text>
+        <rect x="330" y="36" width="130" height="42" rx="9" fill="#bae6fd" stroke="#7dd3fc"/><text x="395" y="62" text-anchor="middle">persona profile</text>
+        <rect x="480" y="36" width="200" height="42" rx="9" fill="#bae6fd" stroke="#7dd3fc"/><text x="580" y="62" text-anchor="middle">后筛 (userQuestions)</text>
+      </g>
+
+      <rect x="40" y="112" width="840" height="86" rx="12" fill="#f3edff" stroke="#ddd6fe"/>
+      <text x="56" y="144" font-size="15" font-weight="700" fill="#6d28d9">L4</text>
+      <text x="56" y="164" font-size="11" fill="#64748b">感知总线</text>
+      <text x="56" y="184" font-size="11" fill="#64748b">Signal Bus</text>
+      <g font-size="13" fill="#4c1d95">
+        <rect x="120" y="134" width="230" height="42" rx="9" fill="#c4b5fd" stroke="#a78bfa"/><text x="235" y="160" text-anchor="middle">fakeren-signal-bus</text>
+        <rect x="370" y="134" width="330" height="42" rx="9" fill="#ddd6fe" stroke="#c4b5fd"/><text x="535" y="160" text-anchor="middle">信号源插件 (Definition/Provider/Consumer)</text>
+      </g>
+
+      <rect x="40" y="210" width="840" height="86" rx="12" fill="#eef0ff" stroke="#c7d2fe"/>
+      <text x="56" y="242" font-size="15" font-weight="700" fill="#4338ca">L3</text>
+      <text x="56" y="262" font-size="11" fill="#64748b">认知层</text>
+      <text x="56" y="282" font-size="11" fill="#64748b">Cognition</text>
+      <g font-size="12.5" fill="#312e81">
+        <rect x="120" y="232" width="120" height="40" rx="9" fill="#a5b4fc" stroke="#818cf8"/><text x="180" y="257" text-anchor="middle">drift</text>
+        <rect x="252" y="232" width="120" height="40" rx="9" fill="#a5b4fc" stroke="#818cf8"/><text x="312" y="257" text-anchor="middle">recall</text>
+        <rect x="384" y="232" width="140" height="40" rx="9" fill="#a5b4fc" stroke="#818cf8"/><text x="454" y="257" text-anchor="middle">situational</text>
+        <rect x="536" y="232" width="120" height="40" rx="9" fill="#c7d2fe" stroke="#a5b4fc"/><text x="596" y="257" text-anchor="middle">grader</text>
+        <rect x="668" y="232" width="110" height="40" rx="9" fill="#c7d2fe" stroke="#a5b4fc"/><text x="723" y="257" text-anchor="middle">eval</text>
+      </g>
+
+      <rect x="40" y="308" width="840" height="86" rx="12" fill="#e8fbf6" stroke="#99f6e4"/>
+      <text x="56" y="340" font-size="15" font-weight="700" fill="#0f766e">L2</text>
+      <text x="56" y="360" font-size="11" fill="#64748b">记忆基座</text>
+      <text x="56" y="380" font-size="11" fill="#64748b">Memory (axolotl)</text>
+      <g font-size="12.5" fill="#134e4a">
+        <rect x="120" y="330" width="240" height="42" rx="9" fill="#5eead4" stroke="#2dd4bf"/><text x="240" y="356" text-anchor="middle">fakeren-memory</text>
+        <rect x="372" y="330" width="290" height="42" rx="9" fill="#ccfbf1" stroke="#5eead4"/><text x="517" y="356" text-anchor="middle">Writer / Reader / Consolidator / GraphSchema</text>
+      </g>
+
+      <rect x="40" y="406" width="840" height="86" rx="12" fill="#fef3f2" stroke="#fecaca"/>
+      <text x="56" y="438" font-size="15" font-weight="700" fill="#b91c1c">L1.5</text>
+      <text x="56" y="458" font-size="11" fill="#64748b">实例管理层</text>
+      <text x="56" y="478" font-size="11" fill="#64748b">Instance (D5)</text>
+      <g font-size="12" fill="#7f1d1d">
+        <rect x="120" y="428" width="230" height="42" rx="9" fill="#fca5a5" stroke="#f87171"/><text x="235" y="454" text-anchor="middle">fakeren-registry</text>
+        <rect x="362" y="428" width="300" height="42" rx="9" fill="#fee2e2" stroke="#fca5a5"/><text x="512" y="454" text-anchor="middle">配置页(新建/列出) · 会话选定 · 不可中途切换</text>
+      </g>
+
+      <rect x="40" y="498" width="840" height="86" rx="12" fill="#fff7e8" stroke="#fde7b3"/>
+      <text x="56" y="530" font-size="15" font-weight="700" fill="#b45309">L1</text>
+      <text x="56" y="550" font-size="11" fill="#64748b">薄适配层</text>
+      <text x="56" y="570" font-size="11" fill="#64748b">Adapter (C3)</text>
+      <g font-size="12" fill="#7c2d12">
+        <rect x="120" y="520" width="230" height="42" rx="9" fill="#f6c177" stroke="#f0b34d"/><text x="235" y="546" text-anchor="middle">fakeren-adapter</text>
+        <rect x="362" y="520" width="300" height="42" rx="9" fill="#fde9c4" stroke="#f6c177"/><text x="512" y="546" text-anchor="middle">preStep · idle · invariant · askUser · persist</text>
+      </g>
+
+      <rect x="40" y="596" width="840" height="76" rx="12" fill="#eef0f2" stroke="#cfd6df"/>
+      <text x="56" y="626" font-size="15" font-weight="700" fill="#475569">L0</text>
+      <text x="56" y="646" font-size="11" fill="#64748b">上游基座</text>
+      <g font-size="13" fill="#334155">
+        <rect x="120" y="612" width="760" height="44" rx="9" fill="#e2e8f0" stroke="#cbd5e1"/><text x="500" y="635" text-anchor="middle">dsh @ b150a55（锁 commit，不 fork / 不 patch 核心）</text>
+      </g>
+
+      <!-- vertical spine annotation -->
+      <line x1="48" y1="14" x2="48" y2="672" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="3 5"/>
+      <text x="14" y="300" font-size="11" fill="#94a3b8" transform="rotate(-90 14 300)" text-anchor="middle">横向贯穿：L2 记忆基座被所有 L3 通道读写</text>
+    </svg>
+  </div>
+  <h3 class="sub">关键分层纪律</h3>
+  <ul>
+    <li><b>L2 记忆基座横向贯穿</b>：L3 三通道都读它、写它；但它不依赖 L4/L5。</li>
+    <li><b>L1 适配层是唯一</b>直接 import dsh 的地方；其余层只依赖 L1 暴露的域 API（C3：rc 变更只改 L1）。</li>
+    <li><b>L4 感知总线对上层只暴露「信息能否进来 + 存哪」</b>，绝不暴露「进来的是什么感官」（D4）。</li>
+    <li><b>L1.5 实例管理层是横向边界</b>：进入 L2–L5 的每条状态（记忆图 / 学习进度 / 种子池 / valence）都按 <code>instanceId</code> 命名空间隔离，假人之间互不可见（D5）。</li>
+  </ul>
+</section>
+
+<!-- ============ 2. 模块划分 ============ -->
+<section id="s2">
+  <h2 class="sec">2 · 模块划分与需求映射</h2>
+  <p>所有认知/表达/感知模块以 <b>dsh peer 插件</b>（Cordis Seam）形态接入（<code>req_dsh_peer_plugin</code>），非编码 profile 复用 runtime 骨架、弃 terminal/editor 工具（<code>req_noncoding_profile</code>）。</p>
+  <div class="card">
+    <table>
+      <thead><tr><th style="width:24%">模块 / 层</th><th style="width:38%">职责</th><th style="width:22%">主满足 req</th><th>源标签</th></tr></thead>
+      <tbody>
+        <tr><td><b>L1 · fakeren-adapter</b><br><span class="note">薄适配层 (C3)</span></td>
+          <td>唯一 import dsh 处。包 <code>agent/pre-step</code>、<code>runMaintenance</code>、<code>ctx.invariants</code>、<code>userQuestions.ask()</code>、<code>storageDomain</code>。</td>
+          <td>req_async_precompute · req_degrade_no_fabricate · req_leak_postfilter_dynamic</td><td>—</td></tr>
+        <tr><td><b>L1.5 · fakeren-registry</b><br><span class="note">实例管理层 (D5)</span></td>
+          <td>假人注册表：每假人=独立 axolotl 命名空间+独立学习进度/种子池；配置页新建/列出假人；会话开始选定 instanceId，绑定后不变量拒变更。</td>
+          <td>req_iso_unit · req_iso_namespace · req_iso_config_page · req_iso_session_select · req_iso_no_mid_switch · req_iso_learning_scoped</td><td>—</td></tr>
+        <tr><td><b>L2 · fakeren-memory</b><br><span class="note">记忆基座 (D1)</span></td>
+          <td>包 axolotl_rs。暴露 <code>MemoryWriter</code>/<code>MemoryReader</code>/<code>Consolidator</code>。D1 的唯一记忆落地。</td>
+          <td>维度 H 全 9 条</td><td>—</td></tr>
+        <tr><td><b>L3 · fakeren-drift</b></td>
+          <td>L0/L0.5 漂移：真实史游标 + 记忆图采样种子，AI 自身情绪加权（D2），注入 ambient。</td>
+          <td>req_l0_real_history_drift · req_l05_knowledge_trajectory · req_l0_emotion_coupling</td>
+          <td><span class="pill drift">fakeren-drift</span></td></tr>
+        <tr><td><b>L3 · fakeren-recall</b></td>
+          <td>目标导向图检索（自己的记忆图），独立路径。</td>
+          <td>req_channel_separation（图检索通道）</td>
+          <td><span class="pill recall">fakeren-recall</span></td></tr>
+        <tr><td><b>L3 · fakeren-situational</b></td>
+          <td>L1 处境：拉取/理解用户当下状况，目标导向。</td>
+          <td>req_l1_situational_awareness</td>
+          <td><span class="pill situational">fakeren-situational</span></td></tr>
+        <tr><td><b>L3 · fakeren-grader</b></td>
+          <td>分类 {strong|weak|zero, confidence}；fail-safe 置信低→zero；映射 <code>req_leak_by_task_class</code>。</td>
+          <td>req_leak_by_task_class · req_leak_postfilter_dynamic</td><td>—</td></tr>
+        <tr><td><b>L3 · fakeren-eval</b></td>
+          <td>反事实重跑（带/不带领子各跑一遍 diff）；挂 <code>llm-replay</code>+<code>tokenMeter</code>。</td>
+          <td>req_output_attribution</td><td>—</td></tr>
+        <tr><td><b>L4 · fakeren-signal-bus</b></td>
+          <td>信号源插件契约（§5）；采集开关/本地留存/不可达即 no-op。</td>
+          <td>req_capture_whitelist · req_local_only · req_degrade_no_fabricate</td><td>—</td></tr>
+        <tr><td><b>L5 · fakeren-precompose</b></td>
+          <td><code>pre-step</code> 内：grader 定级→向三通道取贡献→按 persona 组装注入（带 source 标签）；衰减（Plan B 停复注 + 留痕，不遮蔽、不碰 dsh 窗口）。</td>
+          <td>req_ambient_decay_stream</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 3. 三通道状态机 ============ -->
+<section id="s3">
+  <h2 class="sec">3 · 三通道状态机与分离保障（C2）</h2>
+  <h3 class="sub">3.1 各通道独立状态机</h3>
+  <div class="card">
+    <div style="display:flex;gap:18px;flex-wrap:wrap;">
+      <!-- drift -->
+      <div style="flex:1 1 300px;">
+        <div style="font-weight:700;color:var(--drift);margin-bottom:6px;"><span class="pill drift">drift</span> 漂移（非目标导向，漏而非查）</div>
+        <svg class="diagram" viewBox="0 0 300 170" xmlns="http://www.w3.org/2000/svg">
+          <defs><marker id="a1" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#8b5cf6"/></marker></defs>
+          <g font-size="12" fill="#4c1d95" text-anchor="middle">
+            <rect x="14" y="20" width="110" height="40" rx="9" fill="#ede9fe" stroke="#8b5cf6"/><text x="69" y="45">gathering</text>
+            <rect x="150" y="20" width="110" height="40" rx="9" fill="#ede9fe" stroke="#8b5cf6"/><text x="205" y="45">staged</text>
+            <rect x="150" y="90" width="110" height="40" rx="9" fill="#ede9fe" stroke="#8b5cf6"/><text x="205" y="115">injecting</text>
+            <rect x="14" y="90" width="110" height="40" rx="9" fill="#ede9fe" stroke="#8b5cf6"/><text x="69" y="115">cooling</text>
+          </g>
+          <g stroke="#8b5cf6" stroke-width="1.6" fill="none" marker-end="url(#a1)">
+            <path d="M124,40 C138,40 138,40 148,40"/>
+            <path d="M205,60 C205,72 205,78 205,88"/>
+            <path d="M150,110 C138,110 138,100 124,98"/>
+            <path d="M69,90 C69,72 69,62 69,62"/>
+          </g>
+          <g font-size="9.5" fill="#7c3aed">
+            <text x="138" y="33" text-anchor="middle">idle 扫描游标+图</text>
+            <text x="232" y="76" text-anchor="middle">pre-step 读取</text>
+            <text x="138" y="133" text-anchor="middle">遮蔽旧种子</text>
+            <text x="22" y="76" text-anchor="middle">下一轮刷新</text>
+          </g>
+        </svg>
+        <p class="note">种子池存 <code>storageDomain</code>（H2 持久），不靠 <code>ctx.jobs</code>。gathering 只骑 <code>ctx.sessionPersistence.list()/load()</code>（跨会话扫原始事件，非 <code>sessionQuery</code> 模型可见投影）+ <code>MemoryReader.queryCrossDomain()</code>，<b>代码层禁止 <code>ctx.sessionQuery</code></b>。<code>sessionPersistence</code> 是 dsh 文档化插件面 API（实测存在），故 RealHistoryCursor 不 fork 核心。</p>
+      </div>
+      <!-- recall -->
+      <div style="flex:1 1 280px;">
+        <div style="font-weight:700;color:var(--recall);margin-bottom:6px;"><span class="pill recall">recall</span> 图检索（目标导向）</div>
+        <svg class="diagram" viewBox="0 0 300 170" xmlns="http://www.w3.org/2000/svg">
+          <defs><marker id="a2" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#3b82f6"/></marker></defs>
+          <g font-size="12" fill="#1e3a8a" text-anchor="middle">
+            <rect x="40" y="20" width="100" height="40" rx="9" fill="#dbeafe" stroke="#3b82f6"/><text x="90" y="45">idle</text>
+            <rect x="40" y="90" width="100" height="40" rx="9" fill="#dbeafe" stroke="#3b82f6"/><text x="90" y="115">querying</text>
+            <rect x="170" y="90" width="100" height="40" rx="9" fill="#dbeafe" stroke="#3b82f6"/><text x="220" y="115">injecting</text>
+          </g>
+          <g stroke="#3b82f6" stroke-width="1.6" fill="none" marker-end="url(#a2)">
+            <path d="M90,60 C90,72 90,78 90,88"/>
+            <path d="M140,110 C152,110 158,110 168,110"/>
+            <path d="M220,90 C220,72 220,60 200,52 C160,42 120,42 90,60"/>
+          </g>
+          <g font-size="9.5" fill="#1d4ed8">
+            <text x="118" y="76" text-anchor="middle">agent 需要事实</text>
+            <text x="155" y="78" text-anchor="middle">查询</text>
+            <text x="155" y="135" text-anchor="middle">注入后回 idle</text>
+          </g>
+        </svg>
+      </div>
+      <!-- situational -->
+      <div style="flex:1 1 280px;">
+        <div style="font-weight:700;color:var(--situational);margin-bottom:6px;"><span class="pill situational">situational</span> 处境（目标导向，理解用户）</div>
+        <svg class="diagram" viewBox="0 0 300 170" xmlns="http://www.w3.org/2000/svg">
+          <defs><marker id="a3" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#14b8a6"/></marker></defs>
+          <g font-size="12" fill="#0f766e" text-anchor="middle">
+            <rect x="40" y="20" width="100" height="40" rx="9" fill="#ccfbf1" stroke="#14b8a6"/><text x="90" y="45">idle</text>
+            <rect x="40" y="90" width="100" height="40" rx="9" fill="#ccfbf1" stroke="#14b8a6"/><text x="90" y="115">sensing</text>
+            <rect x="170" y="90" width="100" height="40" rx="9" fill="#ccfbf1" stroke="#14b8a6"/><text x="220" y="115">injecting</text>
+          </g>
+          <g stroke="#14b8a6" stroke-width="1.6" fill="none" marker-end="url(#a3)">
+            <path d="M90,60 C90,72 90,78 90,88"/>
+            <path d="M140,110 C152,110 158,110 168,110"/>
+            <path d="M220,90 C220,72 220,60 200,52 C160,42 120,42 90,60"/>
+          </g>
+          <g font-size="9.5" fill="#0f766e">
+            <text x="118" y="76" text-anchor="middle">感知总线/对话拉取</text>
+            <text x="155" y="78" text-anchor="middle">感知</text>
+            <text x="155" y="135" text-anchor="middle">注入后回 idle</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <h3 class="sub">3.2 分离保障（三层强制，C2）</h3>
+  <div class="card">
+    <table>
+      <thead><tr><th style="width:30%">层</th><th>机制</th></tr></thead>
+      <tbody>
+        <tr><td><b>① 类型隔离</b></td><td>每条贡献 <code>AmbientContribution{channel, sourceTag, payload}</code>；<code>drift</code> 分支的编译器类型 <b>只暴露 <code>RealHistoryCursor</code> 与 <code>MemoryReader</code>，不含 <code>ctx.sessionQuery</code></b>——从 API 层就堵死借道。</td></tr>
+        <tr><td><b>② 源标签审计</b></td><td>所有注入消息带 <code>source:{kind:'plugin',plugin:'fakeren-*'}</code>；<code>req_seed_provenance</code> 由「model-visible 必 logged」不变量（base-analysis §3.1）免费强制。</td></tr>
+        <tr><td><b>③ 不变量校验</b></td><td>注册 <code>ctx.invariants</code> 检查「<code>fakeren-drift</code> 来源的事件必须有真实史游标 id 或记忆图节点 id 作证，否则 fail()」——把 C2 从约定升级成运行时会抛错的机器校验。</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 4. 数据流 ============ -->
+<section id="s4">
+  <h2 class="sec">4 · 数据流（turn 周期 + idle 维护）</h2>
+  <div class="card flush">
+    <svg class="diagram" viewBox="0 0 920 540" xmlns="http://www.w3.org/2000/svg" aria-label="数据流图">
+      <defs><marker id="af" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#64748b"/></marker></defs>
+      <!-- turn lane -->
+      <rect x="30" y="20" width="860" height="250" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+      <text x="48" y="44" font-size="13" font-weight="700" fill="#0f766e">TURN 周期（关键路径）</text>
+      <g font-size="12.5" fill="#1e293b" text-anchor="middle">
+        <rect x="60" y="60" width="150" height="44" rx="10" fill="#e0f2fe" stroke="#38bdf8"/><text x="135" y="87">用户消息</text>
+        <rect x="250" y="60" width="200" height="44" rx="10" fill="#fde68a" stroke="#f59e0b"/><text x="350" y="80">agent/pre-step</text><text x="350" y="96" font-size="10.5" fill="#92660a">fakeren-precompose</text>
+        <rect x="500" y="60" width="150" height="44" rx="10" fill="#dcfce7" stroke="#22c55e"/><text x="575" y="87">模型响应</text>
+        <rect x="700" y="60" width="170" height="44" rx="10" fill="#cffafe" stroke="#06b6d4"/><text x="785" y="80">turn 结束</text><text x="785" y="96" font-size="10.5" fill="#0e7490">MemoryWriter.extract</text>
+      </g>
+      <g stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#af)">
+        <path d="M210,82 C228,82 232,82 248,82"/>
+        <path d="M450,82 C478,82 482,82 498,82"/>
+        <path d="M650,82 C678,82 682,82 698,82"/>
+      </g>
+      <!-- pre-step sub -->
+      <g font-size="11" fill="#78350f" text-anchor="middle">
+        <rect x="270" y="124" width="150" height="34" rx="8" fill="#fef3c7" stroke="#fcd34d"/><text x="345" y="145">grader 分类</text>
+        <rect x="250" y="170" width="80" height="30" rx="8" fill="#ede9fe" stroke="#a78bfa"/><text x="290" y="190" font-size="10">drift</text>
+        <rect x="345" y="170" width="80" height="30" rx="8" fill="#dbeafe" stroke="#93c5fd"/><text x="385" y="190" font-size="10">situational</text>
+        <rect x="440" y="170" width="80" height="30" rx="8" fill="#dcfce7" stroke="#86efac"/><text x="480" y="190" font-size="10">recall</text>
+        <rect x="540" y="170" width="120" height="30" rx="8" fill="#fce7f3" stroke="#f9a8d4"/><text x="600" y="190" font-size="10">组装注入</text>
+      </g>
+      <g stroke="#a16207" stroke-width="1.3" fill="none" marker-end="url(#af)">
+        <path d="M350,104 C350,112 350,116 345,122"/>
+        <path d="M345,158 C330,162 305,162 292,167"/>
+        <path d="M345,158 C345,162 345,164 345,167"/>
+        <path d="M345,158 C385,162 420,162 440,167"/>
+        <path d="M600,170 C600,154 600,140 575,116 C520,100 400,100 350,103"/>
+      </g>
+      <text x="345" y="160" font-size="9" fill="#92400e" text-anchor="middle">── 取贡献 ──</text>
+      <!-- write to L2 -->
+      <g stroke="#0f766e" stroke-width="1.8" fill="none" marker-end="url(#af)">
+        <path d="M785,104 C785,140 500,150 430,200 C400,224 300,250 250,300"/>
+      </g>
+      <text x="560" y="180" font-size="11" fill="#0f766e" transform="rotate(-22 560 180)">写 ▶ L2 记忆图（D3 写环节）</text>
+
+      <!-- idle lane -->
+      <rect x="30" y="300" width="860" height="220" rx="14" fill="#f0fdf4" stroke="#bbf7d0"/>
+      <text x="48" y="324" font-size="13" font-weight="700" fill="#15803d">IDLE 维护（runIdle / whenIdle，异步预算）</text>
+      <g font-size="11.5" fill="#14532d" text-anchor="middle">
+        <rect x="60" y="346" width="180" height="40" rx="9" fill="#dcfce7" stroke="#22c55e"/><text x="150" y="371">Consolidator</text>
+        <rect x="270" y="346" width="180" height="40" rx="9" fill="#dcfce7" stroke="#22c55e"/><text x="360" y="363">L0.5 每日学习 tick</text><text x="360" y="378" font-size="9.5" fill="#166534">到期取 top1 已学取 top2</text>
+        <rect x="480" y="346" width="190" height="40" rx="9" fill="#dcfce7" stroke="#22c55e"/><text x="575" y="371">drift engine 刷新</text>
+        <rect x="700" y="346" width="170" height="40" rx="9" fill="#dcfce7" stroke="#22c55e"/><text x="785" y="371">situational 重感知</text>
+      </g>
+      <g stroke="#15803d" stroke-width="1.5" fill="none" marker-end="url(#af)">
+        <path d="M150,386 C150,410 250,410 360,400"/>
+        <path d="M360,386 C400,400 460,400 480,388"/>
+        <path d="M575,386 C620,400 700,400 700,388"/>
+      </g>
+      <!-- read from L2 -->
+      <g stroke="#0f766e" stroke-width="1.8" fill="none" marker-end="url(#af)">
+        <path d="M575,346 C575,300 575,270 560,260"/>
+      </g>
+      <text x="600" y="312" font-size="11" fill="#0f766e">读 ◀ L2 记忆图（D3 读环节）</text>
+      <text x="48" y="436" font-size="11" fill="#166534">建/读分环节（D3）：MemoryWriter.extract 只在 turn 结束跑（写）；drift 读只在 idle/gathering 跑（读）。</text>
+      <text x="48" y="458" font-size="11" fill="#166534">异步预算（H2/E）：gathering、consolidation、L0.5 全在 runIdle，不进主回合关键路径。</text>
+    </svg>
+  </div>
+</section>
+
+<!-- ============ 5. 信号源契约 ============ -->
+<section id="s5">
+  <h2 class="sec">5 · 信号源插件契约（L4，D4）</h2>
+  <p>宿主<b>模态不可知</b>，只定义「信息输入」通用接口。语义/隐私边界归 Provider 自管（D4）。</p>
+  <div class="card flush">
+    <svg class="diagram" viewBox="0 0 720 380" xmlns="http://www.w3.org/2000/svg" aria-label="信号源插件三角契约">
+      <defs><marker id="as" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#7c3aed"/></marker></defs>
+      <!-- Definition top -->
+      <g text-anchor="middle">
+        <rect x="250" y="30" width="220" height="64" rx="12" fill="#ede9fe" stroke="#8b5cf6"/>
+        <text x="360" y="56" font-size="13.5" font-weight="700" fill="#4c1d95">Definition</text>
+        <text x="360" y="76" font-size="10.5" fill="#6d28d9">声明能产出什么（id / modality / schema）</text>
+      </g>
+      <!-- Provider bottom-left -->
+      <g text-anchor="middle">
+        <rect x="40" y="270" width="240" height="64" rx="12" fill="#fde68a" stroke="#f59e0b"/>
+        <text x="160" y="296" font-size="13.5" font-weight="700" fill="#92400e">Provider</text>
+        <text x="160" y="316" font-size="10.5" fill="#b45309">具体感官实现（摄像头/麦克风…）</text>
+        <text x="160" y="330" font-size="9.5" fill="#b45309">自管语义与隐私边界 · poll() 不可达→null</text>
+      </g>
+      <!-- Consumer bottom-right -->
+      <g text-anchor="middle">
+        <rect x="440" y="270" width="240" height="64" rx="12" fill="#ccfbf1" stroke="#14b8a6"/>
+        <text x="560" y="296" font-size="13.5" font-weight="700" fill="#0f766e">Consumer</text>
+        <text x="560" y="316" font-size="10.5" fill="#0d9488">把信号写入记忆图 + 真实史游标</text>
+        <text x="560" y="330" font-size="9.5" fill="#0d9488">（L2 + 漂移基质）</text>
+      </g>
+      <!-- arrows -->
+      <g stroke="#7c3aed" stroke-width="1.8" fill="none" marker-end="url(#as)">
+        <path d="M290,94 C250,150 200,210 165,266"/>
+        <path d="M430,94 C470,150 520,210 555,266"/>
+        <path d="M280,302 C340,320 380,320 440,302"/>
+      </g>
+      <g font-size="10" fill="#7c3aed" text-anchor="middle">
+        <text x="200" y="185">registers</text>
+        <text x="520" y="185">routes to</text>
+        <text x="360" y="324">ingest(batch)</text>
+      </g>
+      <!-- host responsibility band -->
+      <rect x="40" y="350" width="640" height="22" rx="6" fill="#eef2f7" stroke="#cbd5e1"/>
+      <text x="360" y="365" font-size="10.5" fill="#475569" text-anchor="middle">宿主职责：注册 Provider · 按 refreshIntervalMs 轮询 · 强制 capture_whitelist / local_only / plugin_isolation · 不可达=no-op</text>
+    </svg>
+  </div>
+</section>
+
+<!-- ============ 6. 维度 H 落地 ============ -->
+<section id="s6">
+  <h2 class="sec">6 · 维度 H 在 axolotl_rs 的落地（L2）</h2>
+  <h3 class="sub">6.1 图 schema</h3>
+  <div class="card flush">
+    <svg class="diagram" viewBox="0 0 900 380" xmlns="http://www.w3.org/2000/svg" aria-label="维度H图schema">
+      <defs>
+        <marker id="ae" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#0f766e"/></marker>
+        <marker id="ac" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#b45309"/></marker>
+        <marker id="aw" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#8b5cf6"/></marker>
+      </defs>
+      <!-- nodes -->
+      <g text-anchor="middle" font-size="12.5">
+        <rect x="60" y="40" width="180" height="54" rx="11" fill="#e0f2fe" stroke="#38bdf8"/>
+        <text x="150" y="62" font-weight="700" fill="#075985">Entity</text><text x="150" y="80" font-size="10" fill="#0369a1">人/物/概念</text>
+        <rect x="360" y="40" width="180" height="54" rx="11" fill="#e0f2fe" stroke="#38bdf8"/>
+        <text x="450" y="62" font-weight="700" fill="#075985">Event</text><text x="450" y="80" font-size="10" fill="#0369a1">已发生事件 · timestamp+provenance</text>
+        <rect x="660" y="40" width="180" height="54" rx="11" fill="#fde68a" stroke="#f59e0b"/>
+        <text x="750" y="62" font-weight="700" fill="#92400e">MetaNode</text><text x="750" y="80" font-size="10" fill="#b45309">递归生长出的元节点</text>
+      </g>
+      <!-- edges legend -->
+      <g font-size="11.5" text-anchor="middle">
+        <rect x="60" y="150" width="220" height="42" rx="9" fill="#ecfdf5" stroke="#6ee7b7"/><text x="170" y="176" fill="#065f46">relates（typed 关系）/ cooccurrence</text>
+        <rect x="340" y="150" width="240" height="42" rx="9" fill="#fff7ed" stroke="#fdba74"/><text x="460" y="170" fill="#9a3412">causal</text><text x="460" y="186" font-size="10" fill="#c2410c">因果·带方向+置信（真实偶然性载体）</text>
+        <rect x="640" y="150" width="220" height="42" rx="9" fill="#f5f3ff" stroke="#c4b5fd"/><text x="750" y="170" fill="#5b21b6">crossdomain_weak</text><text x="750" y="186" font-size="10" fill="#6d28d9">陈旧/周边弱关联（漂移种子）</text>
+      </g>
+      <!-- valence attribute -->
+      <rect x="270" y="240" width="360" height="110" rx="12" fill="#fef9c3" stroke="#facc15"/>
+      <text x="450" y="266" font-size="13" font-weight="700" fill="#854d0e" text-anchor="middle">valence（节点属性 · D2 重定义）</text>
+      <text x="450" y="290" font-size="11" fill="#a16207" text-anchor="middle">{ score:-1..1, dims:{awe,aversion,fondness,fear}, self:true }</text>
+      <text x="450" y="312" font-size="10.5" fill="#854d0e" text-anchor="middle">AI 自身情绪（非用户情绪）</text>
+      <text x="450" y="330" font-size="10" fill="#a16207" text-anchor="middle">越强的记忆/事件 → 漂移种子入池概率与漏出权重越高</text>
+
+      <!-- connections from nodes to edges -->
+      <g stroke="#0f766e" stroke-width="1.6" fill="none" marker-end="url(#ae)">
+        <path d="M240,94 C260,120 250,138 250,148"/>
+        <path d="M450,94 C450,120 450,138 450,148"/>
+        <path d="M750,94 C750,120 750,138 750,148"/>
+      </g>
+      <g stroke="#0f766e" stroke-width="1.5" fill="none" marker-end="url(#ae)">
+        <path d="M170,192 C220,210 240,220 280,236"/>
+        <path d="M460,192 C460,215 450,225 450,238"/>
+        <path d="M750,192 C700,215 650,225 560,238"/>
+      </g>
+      <!-- emotion coupling arrow valence -> drift -->
+      <g stroke="#8b5cf6" stroke-width="1.8" fill="none" marker-end="url(#aw)">
+        <path d="M750,260 C800,260 840,290 855,300"/>
+      </g>
+      <text x="858" y="316" font-size="10" fill="#6d28d9" transform="rotate(90 858 316)">情绪耦合</text>
+    </svg>
+  </div>
+  <h3 class="sub">6.2–6.4 读写 / 巩固 / 漂移种子</h3>
+  <div class="card">
+    <table>
+      <thead><tr><th style="width:22%">组件</th><th>要点</th></tr></thead>
+      <tbody>
+        <tr><td><b>MemoryWriter.extract</b></td><td>LLM 复用自身抽取候选节点/边（无第二模型）→ 写图；事件记录时一并写 <b>AI 自身 valence</b>（writer 提示模型输出其第一人称情绪反应）。</td></tr>
+        <tr><td><b>MemoryReader</b></td><td><code>recall(keywords)</code> / <code>recallFeedback(dim)</code>（按 valence 回忆，区别于图检索通道）/ <code>queryCrossDomain(nodeId,maxHops)</code>（漂移植样）/ <code>queryByValence(dim,threshold)</code>（情绪加权采样）。</td></tr>
+        <tr><td><b>Consolidator</b></td><td>周期多信号评分 <code>|valence|+recency+access_freq+degree</code> → 留/剪/合并；产出<b>巩固报告</b>；偶对高中心性簇跑 extract 长出 <code>MetaNode</code>（递归生长）。</td></tr>
+        <tr><td><b>drift engine</b></td><td>从 <code>queryCrossDomain</code> + <code>queryByValence</code> 取陈旧/周边节点，<b>AI 自身 valence 越高 → 入池概率与漏出权重越高</b>（req_l0_emotion_coupling），经 grader 定级后由 precompose 注入。</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 7. 风险闭合 ============ -->
+<section id="s7">
+  <h2 class="sec">7 · 风险闭合</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th style="width:42%">风险</th><th>闭合方案</th></tr></thead>
+      <tbody>
+        <tr><td>输出级归因只能近似、天真做法违反禁编造（需求张力 #1）</td><td>反事实重跑 <code>fakeren-eval</code>；评测模式常开、日常只留 C1（记注入）。</td></tr>
+        <tr><td>任务分级误判（需求张力 #2）</td><td>fail-safe：置信低→zero；强漏误判比弱漏漏判危险。</td></tr>
+        <tr><td>信号边界下放（需求张力 #3 / D4）</td><td>信号总线设计已落地：宿主只管进/存/停，语义归 Provider。</td></tr>
+        <tr><td>H1 无 24/7</td><td>C1=A 已决：只在进程常驻期漂，靠长开程序解决。</td></tr>
+        <tr><td>H2 jobs 进程本地</td><td>学习进度/种子池存 <code>storageDomain</code>，重启重算 due。</td></tr>
+        <tr><td>H3 storageDomain 进程内</td><td>C1=A 单进程内解决，不引入跨进程。</td></tr>
+        <tr><td>H4 rc.2 破坏变更</td><td>L1 薄适配层 + 锁 commit <code>b150a55</code>，只挂文档化 seam。</td></tr>
+        <tr><td><code>sessionQuery</code> 陷阱（L0 退化为目标导向检索）</td><td>§3.2 三层强制：类型隔离 + 源标签 + 不变量校验。</td></tr>
+        <tr><td>跨会话漂移基质（会话日志分裂）</td><td>骑在 <code>ctx.sessionPersistence.list()/load()</code> 上扫<b>原始事件</b>（非 sessionQuery 的模型可见投影，源码已确认该 API 存在）；<b>全量跨会话 + 假人命名空间边界</b>（req_iso_full_crosssession · req_iso_namespace）：按 instanceId 过滤只取该假人历史，假人之间不串；全量扫描性能由 per-假人 持久化增量游标（存 storageDomain）摊平。</td></tr>
+        <tr><td>衰减 vs 永久留痕</td><td><b>终态 = Plan B（停复注 + 留痕）</b>：drift 停止把低权重种子重新注入，永久记忆（axolotl 图 + dsh 会话日志）原封不动；surface 替换式衰减<b>彻底不做</b>（用户明确"没有必要做替换"），不依赖 dsh 上游暴露 surface-append，C3 守得住。</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 8. 待拍板 ============ -->
+<section id="s8">
+  <h2 class="sec">8 · 已拍板点（全部已决，进入实现期）</h2>
+  <div class="decision">
+    <h3>四项已全部确认，方案定稿，由 WorkBuddy 直接实现</h3>
+    <ol>
+      <li><b>跨会话范围</b>：<b>已决（维度 I）</b>——全量跨会话 + 假人命名空间边界：漂移扫该假人所有历史原始事件（非最近 N），性能由 per-假人 持久化增量游标摊平。详见 req_iso_full_crosssession / req_iso_namespace。</li>
+      <li><b>递归生长 v1 强度</b>：<b>已决 = 保守偶发</b>——<code>MetaNode</code> 仅对高中心性簇按低概率/长周期偶发抽取（<code>dec_recursive_growth_conservative</code>）。</li>
+      <li><b>衰减实现取舍</b>：<b>已决 = Plan B（停复注 + 留痕）为终态，surface 替换彻底不做</b>——drift 停止把低权重种子重新注入，永久记忆原封不动；用户明确"没有必要做替换"，不引入任何 surface 依赖，C3 守得住（<code>dec_decay_planb</code> / <code>rejected_surface_replacement</code>）。</li>
+      <li><b>写码分工</b>：<b>已决 = WorkBuddy 直接写码</b>（不交龙虾）。方案定稿，进入实现期。</li>
+    </ol>
+  </div>
+</section>
+
+<footer class="doc">
+  假人 · 阶段三架构方案评审稿 · 自包含 HTML（与 <code>architecture.md</code> 同内容，可视化增强）· 2026-08-23 ·
+  语义图同步：86 节点 / 230 边。
+</footer>
+</main>
+</div>
+</body>
+</html>

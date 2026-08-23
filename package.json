@@ -1,0 +1,21 @@
+{
+  "name": "fakeren",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "假人 — dsh plugin: ambient leakage (L0/L0.5/L1) over an axolotl-backed self-memory, isolated per-instance.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "node --import tsx src/index.ts"
+  },
+  "dependencies": {
+    "cordis": "^3.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^22.0.0"
+  }
+}
