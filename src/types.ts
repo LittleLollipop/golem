@@ -41,11 +41,6 @@ export interface SessionPersistence {
   load(id: string): Promise<RawSessionEvent[]>;
 }
 
-/** `ctx.invariants` — machine-enforced runtime checks. */
-export interface Invariants {
-  register(name: string, check: (ctx: unknown) => void | Promise<void>): void;
-}
-
 /** `ctx.userQuestions` — pause to ask the human. */
 export interface UserQuestions {
   ask(question: string, opts?: { postFilter?: (answer: string) => boolean }): Promise<string>;
@@ -62,13 +57,20 @@ export interface StorageDomain {
  * `ctx` to this at the plugin boundary (see adapter/dsh-seams.ts).
  */
 export interface DshContext {
-  agent: {
-    on(event: "pre-step", listener: PreStepListener): void;
-    runMaintenance(task: () => Promise<void>): Promise<void>;
-    whenIdle(): Promise<void>;
-  };
+  /**
+   * Cordis event API. We consume two dsh events:
+   *   - `agent/pre-step`  (payload: { agent, messages, turn, step, signal }, next)
+   *       → return `{ kind: "enter", messages }` to inject leakage context.
+   *   - `agent/status`    (payload: { agent, status: "idle" | "running" })
+   *       → trigger idle maintenance on "idle".
+   * `agent`/`invariants` are NOT injectable services at the profile root
+   * (base-analysis §2 was wrong here) — they live in a nested scope, so we
+   * must use the event bus, never `ctx.agent.*`.
+   */
+  on(event: "agent/pre-step", listener: (payload: any, next: any) => any): void;
+  on(event: "agent/status", listener: (payload: any) => any): void;
+  on(event: string, listener: (...args: any[]) => any): void;
   sessionPersistence: SessionPersistence;
-  invariants: Invariants;
   userQuestions: UserQuestions;
   storageDomain: StorageDomain;
   /** other dsh services we don't touch */

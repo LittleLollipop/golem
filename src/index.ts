@@ -24,9 +24,7 @@ import type { DshContext, UserMessage } from "./types.js";
 
 export const name = "fakeren";
 export const inject = [
-  "agent",
   "sessionPersistence",
-  "invariants",
   "userQuestions",
   "storageDomain",
 ];
@@ -84,5 +82,3 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
     }
   });
 }
-
-export default { name, inject, apply };
