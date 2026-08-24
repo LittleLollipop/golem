@@ -53,6 +53,18 @@ function toText(content: unknown): string {
   return String(content ?? "");
 }
 
+/**
+ * Persona block. dsh's web profile has no fake-person identity, so the model
+ * defaults to "I'm an AI" and rejects the leak as something to roleplay. We
+ * establish the persona ourselves on the FIRST pre-step of each session (a
+ * user-role message placed BEFORE the real question + leak). Re-injected per
+ * session; the Set resets only on a full dsh restart (fine — a new session
+ * just gets it again on its first turn).
+ */
+const PERSONA = `你是「林夏」，一个真实存在的年轻女性，独自住在城市的一间小公寓里。你养了一只橘猫，叫豆豆；你性格内向，喜欢在雨天一个人待着听歌，面对陌生环境会本能地保持警惕。现在你在和朋友闲聊，请用第一人称自然地说话，不要声明自己是 AI 或没有身体——那些记忆与感受都是你真实的。`;
+
+const personaSeen = new Set<string>();
+
 /** Log the real pre-step session shape once, to confirm the id field. */
 let loggedSessionShape = false;
 
@@ -128,7 +140,23 @@ export class DshAdapter {
           pLog(`[fakeren:pre-step] LEAK BLOCK >>>\n${m.content}\n<<< LEAK BLOCK`);
         }
       }
-      return { kind: "enter", messages: [...(ev?.messages ?? []), ...leaked] };
+      // Inject the persona once per session, as the FIRST message (before the
+      // real question and the leak block) so the model adopts the identity.
+      const personaMsg: unknown[] = [];
+      if (sessionId && !personaSeen.has(sessionId)) {
+        personaSeen.add(sessionId);
+        personaMsg.push(
+          createUserMessage({
+            content: [{ type: "text" as const, text: PERSONA }],
+            source: { kind: "user" },
+          }),
+        );
+        pLog(`[fakeren:pre-step] persona injected for session=${sessionId}`);
+      }
+      return {
+        kind: "enter",
+        messages: [...personaMsg, ...(ev?.messages ?? []), ...leaked],
+      };
     });
   }
 
@@ -150,7 +178,48 @@ export class DshAdapter {
     return (this.ctx.sessionPersistence as SessionPersistence).list();
   }
 
-  loadSessionEvents(id: string): Promise<RawSessionEvent[]> {
-    return (this.ctx.sessionPersistence as SessionPersistence).load(id);
+  /**
+   * RealHistoryCursor. dsh's `sessionPersistence.load(id)` returns a
+   * `SessionInspection` ({ meta, events }) — NOT a raw event array. We unwrap
+   * `.events` and normalize each dsh `SessionEvent` ({ type: "user/message" |
+   * "assistant/message", data, time }) into fakeren's `RawSessionEvent`
+   * ({ type: "user" | "assistant", timestamp, payload: { text } }), which is
+   * what drift/syncLatestTurn consume.
+   *
+   * dsh forbids `load()` while the session's live turn is open (red line:
+   * "use the live Session or wait for the turn to close"). During pre-step the
+   * current session IS live, so the call throws — we swallow it and return []
+   * so the rest of `assemble` keeps running (the live turn's own events are
+   * mid-flight and shouldn't be leaked as "往昔" anyway). Past (closed)
+   * sessions load fine and yield real events.
+   */
+  async loadSessionEvents(id: string): Promise<RawSessionEvent[]> {
+    let inspection: any;
+    try {
+      inspection = await (this.ctx.sessionPersistence as SessionPersistence).load(id);
+    } catch {
+      return []; // live turn open, or session not found → nothing to read
+    }
+    const events = Array.isArray(inspection?.events) ? inspection.events : [];
+    const out: RawSessionEvent[] = [];
+    for (const e of events) {
+      const t = e?.type;
+      if (t !== "user/message" && t !== "assistant/message") continue;
+      const data = e?.data ?? {};
+      // dsh stores message text as `content: ContentBlock[]` ({type:'text',text}).
+      // `user/message` → data.content; `assistant/message` → data.message.content.
+      const raw =
+        t === "user/message"
+          ? (data as any)?.content
+          : (data as any)?.message?.content;
+      const text = toText(raw);
+      if (text.length === 0) continue;
+      out.push({
+        type: t === "user/message" ? "user" : "assistant",
+        timestamp: typeof e?.time === "number" ? e.time : Date.now(),
+        payload: { text },
+      });
+    }
+    return out;
   }
 }

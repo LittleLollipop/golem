@@ -23,7 +23,10 @@ export class Grader {
   private estimate(t: string): number {
     let c = 0.2;
     if (t.includes("?") || t.includes("？")) c += 0.4;
-    if (/\b(how|what|why|when|where|who|怎么|什么|为什么|如何|查|计算|总结)\b/i.test(t)) c += 0.3;
+    // NOTE: \b word boundaries do NOT work for CJK (no whitespace tokenization),
+    // so the Chinese cues below must be matched WITHOUT \b — otherwise "什么/怎么"
+    // never fire and the grader is effectively blind to Chinese questions.
+    if (/(how|what|why|when|where|who|怎么|什么|为什么|如何|几|哪|谁|查|计算|总结)/i.test(t)) c += 0.3;
     return Math.min(1, c);
   }
 }
