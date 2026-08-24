@@ -26,7 +26,6 @@ export const name = "fakeren";
 export const inject = [
   "sessionPersistence",
   "userQuestions",
-  "storageDomain",
 ];
 
 export interface FakerenConfig {
@@ -36,7 +35,7 @@ export interface FakerenConfig {
 export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
   const dsh = new DshAdapter(ctx);
   const store = new AxolotlClient(config.sidecarUrl);
-  const registry = new InstanceRegistry(store, dsh.storage());
+  const registry = new InstanceRegistry(store);
   const reader = new MemoryReader(store);
   const writer = new MemoryWriter(store);
   const consolidator = new Consolidator(store);

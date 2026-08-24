@@ -13,6 +13,7 @@ import type {
   GraphStats,
   ConsolidationReport,
   InstanceId,
+  InstanceMeta,
 } from "../types.js";
 
 const DEFAULT_BASE = process.env.FAKEREN_SIDECAR_URL ?? "http://127.0.0.1:8741";
@@ -75,5 +76,31 @@ export class AxolotlClient implements GraphStore {
 
   async listInstances(): Promise<InstanceId[]> {
     return this.get<InstanceId[]>(`/instances`);
+  }
+
+  async getMeta(id: InstanceId): Promise<InstanceMeta | null> {
+    const res = await fetch(`${this.baseUrl}/${encodeURIComponent(id)}/meta`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`axolotl sidecar GET /${id}/meta -> ${res.status}`);
+    return (await res.json()) as InstanceMeta;
+  }
+
+  async setMeta(id: InstanceId, meta: InstanceMeta): Promise<void> {
+    await this.post<void>(`/${encodeURIComponent(id)}/meta`, meta);
+  }
+
+  async listMeta(): Promise<InstanceMeta[]> {
+    return this.get<InstanceMeta[]>(`/instances/meta`);
+  }
+
+  async bindSession(sessionId: string, instanceId: InstanceId): Promise<void> {
+    await this.post<void>(`/session/bind`, { sessionId, instanceId });
+  }
+
+  async resolveSession(sessionId: string): Promise<InstanceId | null> {
+    const res = await this.post<{ instanceId: InstanceId | null }>(`/session/resolve`, {
+      sessionId,
+    });
+    return res.instanceId;
   }
 }

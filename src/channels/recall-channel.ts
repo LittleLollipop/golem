@@ -28,13 +28,25 @@ export class GraphRecallSource implements RecallSource {
   }
 }
 
-/** Light keyword extraction from free text (no stopword model yet; v1 only). */
+/**
+ * Light keyword extraction from free text (no stopword model yet; v1 only).
+ * CJK has no whitespace token boundaries, so a Chinese sentence would collapse
+ * into one giant token that can never substring-match a single node label. We
+ * therefore also emit 2-grams over CJK runs — e.g. "养了猫" surfaces "猫" as a
+ * match against a label like "养了一只橘猫叫豆豆".
+ */
 function toKeywords(userText: string): string[] {
+  const text = userText.toLowerCase();
   const seen = new Set<string>();
-  for (const t of userText.toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
+  for (const t of text.split(/[^\p{L}\p{N}]+/u)) {
     if (t.length >= 2) seen.add(t);
   }
-  return Array.from(seen).slice(0, 12);
+  for (const run of text.match(/[\p{L}]+/gu) ?? []) {
+    if (/[一-鿿]/.test(run)) {
+      for (let i = 0; i + 2 <= run.length; i++) seen.add(run.slice(i, i + 2));
+    }
+  }
+  return Array.from(seen).slice(0, 24);
 }
 
 export class RecallChannel {

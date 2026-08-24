@@ -1,22 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { InstanceRegistry } from "../src/registry/instance-registry.js";
 import { FakeGraphStore } from "./fake-graph-store.js";
-import type { StorageDomain, InstanceId } from "../src/types.js";
-
-class FakeStorage implements StorageDomain {
-  private m = new Map<string, unknown>();
-  async get<T = unknown>(k: string): Promise<T | undefined> {
-    return this.m.get(k) as T | undefined;
-  }
-  async set<T = unknown>(k: string, v: T): Promise<void> {
-    this.m.set(k, v);
-  }
-}
 
 function makeReg() {
   const store = new FakeGraphStore();
-  const storage = new FakeStorage();
-  return { reg: new InstanceRegistry(store, storage), store };
+  return { reg: new InstanceRegistry(store), store };
 }
 
 describe("InstanceRegistry (维度 I)", () => {

@@ -14,6 +14,7 @@ import type {
   GraphStats,
   ConsolidationReport,
   InstanceId,
+  InstanceMeta,
   NodeType,
 } from "../types.js";
 
@@ -50,4 +51,20 @@ export interface GraphStore {
 
   /** List instance ids known to the backing store. */
   listInstances(): Promise<InstanceId[]>;
+
+  // ── Instance metadata + session binding (维度 I) ──────────────────────
+  // These live in the same substrate as the memory graph: the substrate is
+  // fakeren's single source of truth, not dsh's storageDomain.
+
+  /** Read one instance's metadata (name/createdAt/turns), or null if absent. */
+  getMeta(id: InstanceId): Promise<InstanceMeta | null>;
+  /** Upsert one instance's metadata. */
+  setMeta(id: InstanceId, meta: InstanceMeta): Promise<void>;
+  /** List metadata for every known instance. */
+  listMeta(): Promise<InstanceMeta[]>;
+
+  /** Bind a session to exactly one instance (req_iso_no_mid_switch). */
+  bindSession(sessionId: string, instanceId: InstanceId): Promise<void>;
+  /** Resolve the instance a session is bound to, or null. */
+  resolveSession(sessionId: string): Promise<InstanceId | null>;
 }

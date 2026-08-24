@@ -46,12 +46,6 @@ export interface UserQuestions {
   ask(question: string, opts?: { postFilter?: (answer: string) => boolean }): Promise<string>;
 }
 
-/** `ctx.storageDomain` — non-session persistent KV (dsh-storage-domain, sqlite/fs). */
-export interface StorageDomain {
-  get<T = unknown>(key: string): Promise<T | undefined>;
-  set<T = unknown>(key: string, value: T): Promise<void>;
-}
-
 /**
  * The subset of dsh's Cordis context fakeren depends on. We cast the real
  * `ctx` to this at the plugin boundary (see adapter/dsh-seams.ts).
@@ -72,7 +66,6 @@ export interface DshContext {
   on(event: string, listener: (...args: any[]) => any): void;
   sessionPersistence: SessionPersistence;
   userQuestions: UserQuestions;
-  storageDomain: StorageDomain;
   /** other dsh services we don't touch */
   [key: string]: unknown;
 }

@@ -21,10 +21,24 @@ import type {
   PreStepListener,
   RawSessionEvent,
   UserQuestions,
-  StorageDomain,
   SessionPersistence,
   UserMessage,
 } from "../types.js";
+
+/** Flatten a dsh content (string | ContentBlock[] | other) into plain text. */
+function toText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((b: any) => (typeof b?.text === "string" ? b.text : typeof b === "string" ? b : ""))
+      .join("");
+  }
+  if (content && typeof content === "object") return JSON.stringify(content);
+  return String(content ?? "");
+}
+
+/** Log the real pre-step session shape once, to confirm the id field. */
+let loggedSessionShape = false;
 
 export class DshAdapter {
   constructor(private readonly ctx: DshContext) {}
@@ -36,22 +50,69 @@ export class DshAdapter {
    */
   onPreStep(fn: PreStepListener): void {
     this.ctx.on("agent/pre-step", async (ev: any, _next: any) => {
-      // dsh message → our domain shape (extract text content).
+      // dsh's session-reference plugin injects `agent` into the pre-step event;
+      // ev.agent.session is a Session OBJECT (not a string id). Extract id
+      // defensively and log the shape once so we can confirm the real field.
+      const ag = ev?.agent;
+      const sess = ag?.session;
+      let sessionId: string;
+      if (typeof sess === "string") {
+        sessionId = sess;
+      } else {
+        sessionId = String(
+          sess?.id ?? sess?.sessionId ?? ag?.id ?? ev?.sessionId ?? "",
+        );
+        if (!loggedSessionShape && sess) {
+          loggedSessionShape = true;
+          console.error(
+            `[fakeren:pre-step] DEBUG agent.session keys=${JSON.stringify(Object.keys(sess))} id=${JSON.stringify(sess?.id)}`,
+          );
+        }
+      }
+      // dsh message → our domain shape. dsh content is ContentBlock[]; flatten
+      // to plain text for the assemble fn (recall/drift/grade all work on text).
       const claimed: UserMessage[] = (ev?.messages ?? []).map((m: any) => ({
         role: "user" as const,
-        content:
-          typeof m?.content === "string" ? m.content : JSON.stringify(m?.content),
+        content: toText(m?.content),
       }));
+      console.error(`[fakeren:pre-step] enter session=${sessionId} claimed=${claimed.length}`);
 
-      const augmented: UserMessage[] = await fn({
-        sessionId: String(ev?.agent?.session ?? ""),
-        claimed,
-      });
+      // The assemble fn touches the axolotl sidecar (registry/recall/drift).
+      // If the sidecar is down it throws — never let that crash the dsh process.
+      let augmented: UserMessage[] = claimed;
+      try {
+        augmented = await fn({ sessionId, claimed });
+      } catch (err) {
+        console.error(
+          `[fakeren:pre-step] WARNING: assemble threw, injecting nothing (agent still runs):`,
+          err,
+        );
+      }
 
-      // dsh expects an array of dsh-compliant messages.
-      const leaked = augmented.map((m) =>
-        createUserMessage({ content: m.content, source: { kind: "user" } }),
-      );
+      // dsh requires content as ContentBlock[] (NOT a bare string). Wrap each
+      // injected message's text in a text block so downstream .map() won't throw.
+      // Only the *assembled* leakage block is newly injected — the baseline
+      // claimed messages already live in ev.messages, so re-adding them would
+      // duplicate the user's own turn.
+      let leaked: unknown[] = [];
+      try {
+        leaked = augmented
+          .filter((m) => m.meta && (m.meta as any).channel === "assembled")
+          .map((m) =>
+            createUserMessage({
+              content: [{ type: "text" as const, text: m.content }],
+              source: { kind: "user" },
+            }),
+          );
+      } catch (err) {
+        console.error(`[fakeren:pre-step] WARNING: createUserMessage threw:`, err);
+      }
+      console.error(`[fakeren:pre-step] exit leaked=${leaked.length}`);
+      for (const m of augmented) {
+        if (m.meta && (m.meta as any).channel === "assembled") {
+          console.error(`[fakeren:pre-step] LEAK BLOCK >>>\n${m.content}\n<<< LEAK BLOCK`);
+        }
+      }
       return { kind: "enter", messages: [...(ev?.messages ?? []), ...leaked] };
     });
   }
@@ -76,9 +137,5 @@ export class DshAdapter {
 
   loadSessionEvents(id: string): Promise<RawSessionEvent[]> {
     return (this.ctx.sessionPersistence as SessionPersistence).load(id);
-  }
-
-  storage(): StorageDomain {
-    return this.ctx.storageDomain;
   }
 }

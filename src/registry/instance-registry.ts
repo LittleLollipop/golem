@@ -11,22 +11,13 @@
  */
 
 import type { GraphStore } from "../memory/graph-store.js";
-import type { InstanceId, InstanceMeta, StorageDomain } from "../types.js";
-
-const K_INSTANCES = "fakeren:instances";
-const kSession = (sid: string) => `fakeren:session:${sid}:instance`;
+import type { InstanceId, InstanceMeta } from "../types.js";
 
 export class InstanceRegistry {
-  constructor(
-    private readonly store: GraphStore,
-    private readonly storage: StorageDomain,
-  ) {}
+  constructor(private readonly store: GraphStore) {}
 
   private async readInstances(): Promise<InstanceMeta[]> {
-    return (await this.storage.get<InstanceMeta[]>(K_INSTANCES)) ?? [];
-  }
-  private async writeInstances(list: InstanceMeta[]): Promise<void> {
-    await this.storage.set(K_INSTANCES, list);
+    return await this.store.listMeta();
   }
 
   async create(id: InstanceId, name: string): Promise<InstanceMeta> {
@@ -34,8 +25,7 @@ export class InstanceRegistry {
     if (list.some((m) => m.id === id)) return list.find((m) => m.id === id)!;
     await this.store.ensureInstance(id); // creates the empty axolotl graph
     const meta: InstanceMeta = { id, name, createdAt: Date.now(), turns: 0 };
-    list.push(meta);
-    await this.writeInstances(list);
+    await this.store.setMeta(id, meta);
     return meta;
   }
 
@@ -52,21 +42,20 @@ export class InstanceRegistry {
           `cannot switch to "${instanceId}" mid-session (req_iso_no_mid_switch).`,
       );
     }
-    await this.storage.set(kSession(sessionId), instanceId);
+    await this.store.bindSession(sessionId, instanceId);
   }
 
   async current(sessionId: string): Promise<InstanceId | null> {
-    return (await this.storage.get<InstanceId>(kSession(sessionId))) ?? null;
+    return await this.store.resolveSession(sessionId);
   }
 
   async touch(sessionId: string): Promise<void> {
     const id = await this.current(sessionId);
     if (!id) return;
-    const list = await this.readInstances();
-    const m = list.find((x) => x.id === id);
+    const m = await this.store.getMeta(id);
     if (m) {
       m.turns += 1;
-      await this.writeInstances(list);
+      await this.store.setMeta(id, m);
     }
   }
 

@@ -10,12 +10,15 @@ import type {
   GraphStats,
   ConsolidationReport,
   InstanceId,
+  InstanceMeta,
 } from "../src/types.js";
 
 export class FakeGraphStore implements GraphStore {
   private nodes = new Map<string, GraphNode>();
   private edges = new Map<string, GraphEdge>();
   private instances = new Set<InstanceId>();
+  private metas = new Map<InstanceId, InstanceMeta>();
+  private sessions = new Map<string, InstanceId>();
 
   /** captures the last consolidate() call for assertions. */
   lastConsolidate: { instanceId: InstanceId; budget: number } | null = null;
@@ -34,6 +37,9 @@ export class FakeGraphStore implements GraphStore {
 
   async ensureInstance(id: InstanceId): Promise<void> {
     this.instances.add(id);
+    if (!this.metas.has(id)) {
+      this.metas.set(id, { id, name: id, createdAt: Date.now(), turns: 0 });
+    }
   }
   async addNode(n: GraphNode): Promise<void> {
     this.nodes.set(n.id, n);
@@ -87,5 +93,21 @@ export class FakeGraphStore implements GraphStore {
   }
   async listInstances(): Promise<InstanceId[]> {
     return [...this.instances];
+  }
+
+  async getMeta(id: InstanceId): Promise<InstanceMeta | null> {
+    return this.metas.get(id) ?? null;
+  }
+  async setMeta(id: InstanceId, meta: InstanceMeta): Promise<void> {
+    this.metas.set(id, meta);
+  }
+  async listMeta(): Promise<InstanceMeta[]> {
+    return [...this.metas.values()];
+  }
+  async bindSession(sessionId: string, instanceId: InstanceId): Promise<void> {
+    this.sessions.set(sessionId, instanceId);
+  }
+  async resolveSession(sessionId: string): Promise<InstanceId | null> {
+    return this.sessions.get(sessionId) ?? null;
   }
 }
