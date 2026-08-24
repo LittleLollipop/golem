@@ -15,6 +15,7 @@
  *     in a nested scope — so we never list them in `inject`.
  */
 
+import * as fs from "node:fs";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import type {
   DshContext,
@@ -24,6 +25,21 @@ import type {
   SessionPersistence,
   UserMessage,
 } from "../types.js";
+
+/**
+ * Persistent pre-step log. dsh's stdout/stderr lives in a transient background
+ * task that the harness may reap, so we ALSO append every key event here. This
+ * is the authoritative audit trail for "did the leak actually reach the model".
+ */
+const PRESTEP_LOG = process.env.FAKEREN_PRESTEP_LOG ?? "/tmp/fakeren-prestep.log";
+function pLog(line: string): void {
+  try {
+    fs.appendFileSync(PRESTEP_LOG, line + "\n");
+  } catch {
+    /* best-effort; never let logging crash the agent */
+  }
+  console.error(line);
+}
 
 /** Flatten a dsh content (string | ContentBlock[] | other) into plain text. */
 function toText(content: unknown): string {
@@ -64,7 +80,7 @@ export class DshAdapter {
         );
         if (!loggedSessionShape && sess) {
           loggedSessionShape = true;
-          console.error(
+          pLog(
             `[fakeren:pre-step] DEBUG agent.session keys=${JSON.stringify(Object.keys(sess))} id=${JSON.stringify(sess?.id)}`,
           );
         }
@@ -75,7 +91,7 @@ export class DshAdapter {
         role: "user" as const,
         content: toText(m?.content),
       }));
-      console.error(`[fakeren:pre-step] enter session=${sessionId} claimed=${claimed.length}`);
+      pLog(`[fakeren:pre-step] enter session=${sessionId} claimed=${claimed.length}`);
 
       // The assemble fn touches the axolotl sidecar (registry/recall/drift).
       // If the sidecar is down it throws — never let that crash the dsh process.
@@ -83,9 +99,8 @@ export class DshAdapter {
       try {
         augmented = await fn({ sessionId, claimed });
       } catch (err) {
-        console.error(
-          `[fakeren:pre-step] WARNING: assemble threw, injecting nothing (agent still runs):`,
-          err,
+        pLog(
+          `[fakeren:pre-step] WARNING: assemble threw, injecting nothing (agent still runs): ${String(err)}`,
         );
       }
 
@@ -105,12 +120,12 @@ export class DshAdapter {
             }),
           );
       } catch (err) {
-        console.error(`[fakeren:pre-step] WARNING: createUserMessage threw:`, err);
+        pLog(`[fakeren:pre-step] WARNING: createUserMessage threw: ${String(err)}`);
       }
-      console.error(`[fakeren:pre-step] exit leaked=${leaked.length}`);
+      pLog(`[fakeren:pre-step] exit leaked=${leaked.length}`);
       for (const m of augmented) {
         if (m.meta && (m.meta as any).channel === "assembled") {
-          console.error(`[fakeren:pre-step] LEAK BLOCK >>>\n${m.content}\n<<< LEAK BLOCK`);
+          pLog(`[fakeren:pre-step] LEAK BLOCK >>>\n${m.content}\n<<< LEAK BLOCK`);
         }
       }
       return { kind: "enter", messages: [...(ev?.messages ?? []), ...leaked] };

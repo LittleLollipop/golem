@@ -25,6 +25,16 @@
 // Run: node sidecar/memory-sidecar.mjs   (listens on 127.0.0.1:8741)
 
 import http from "node:http";
+import fs from "node:fs";
+
+const ACCESS_LOG = process.env.FAKEREN_SIDECAR_LOG ?? "/tmp/fakeren-sidecar.log";
+function accessLog(line) {
+  try {
+    fs.appendFileSync(ACCESS_LOG, line + "\n");
+  } catch {
+    /* best-effort */
+  }
+}
 
 const PORT = Number(process.env.FAKEREN_SIDECAR_PORT ?? 8741);
 const HOST = process.env.FAKEREN_SIDECAR_HOST ?? "127.0.0.1";
@@ -166,6 +176,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
   console.error(`[sidecar] ${req.method} ${path}`);
+  accessLog(`[${new Date().toISOString()}] ${req.method} ${path}`);
 
   let status = 200;
   let payload = {};
