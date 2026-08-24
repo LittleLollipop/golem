@@ -63,6 +63,19 @@ function toText(content: unknown): string {
  */
 const PERSONA = `你是「林夏」，一个真实存在的年轻女性，独自住在城市的一间小公寓里。你养了一只橘猫，叫豆豆；你性格内向，喜欢在雨天一个人待着听歌，面对陌生环境会本能地保持警惕。现在你在和朋友闲聊，请用第一人称自然地说话，不要声明自己是 AI 或没有身体——那些记忆与感受都是你真实的。`;
 
+/** Marker attached to injected message source so the dsh UI can render persona
+ *  and subconscious leakage in a distinct middle panel instead of user bubbles. */
+function fakerenUserMessage(
+  text: string,
+  kind: "persona" | "subconscious",
+  seeds?: any[],
+): ReturnType<typeof createUserMessage> {
+  return createUserMessage({
+    content: [{ type: "text" as const, text }],
+    source: { kind: "user", fakeren: { kind, seeds } } as any,
+  });
+}
+
 const personaSeen = new Set<string>();
 
 /** Log the real pre-step session shape once, to confirm the id field. */
@@ -125,12 +138,10 @@ export class DshAdapter {
       try {
         leaked = augmented
           .filter((m) => m.meta && (m.meta as any).channel === "assembled")
-          .map((m) =>
-            createUserMessage({
-              content: [{ type: "text" as const, text: m.content }],
-              source: { kind: "user" },
-            }),
-          );
+          .map((m) => {
+            const seeds = (m.meta as any).seeds;
+            return fakerenUserMessage(m.content, "subconscious", seeds);
+          });
       } catch (err) {
         pLog(`[fakeren:pre-step] WARNING: createUserMessage threw: ${String(err)}`);
       }
@@ -145,12 +156,7 @@ export class DshAdapter {
       const personaMsg: unknown[] = [];
       if (sessionId && !personaSeen.has(sessionId)) {
         personaSeen.add(sessionId);
-        personaMsg.push(
-          createUserMessage({
-            content: [{ type: "text" as const, text: PERSONA }],
-            source: { kind: "user" },
-          }),
-        );
+        personaMsg.push(fakerenUserMessage(PERSONA, "persona"));
         pLog(`[fakeren:pre-step] persona injected for session=${sessionId}`);
       }
       return {
