@@ -21,6 +21,9 @@ import { SignalBus } from "./bus/signal-bus.js";
 import { Grader } from "./agent/grader.js";
 import { FakerenAgent } from "./agent/fakeren-agent.js";
 import type { DshContext, UserMessage } from "./types.js";
+import * as fs from "node:fs";
+
+const PRESTEP_LOG = process.env.FAKEREN_PRESTEP_LOG ?? "/tmp/fakeren-prestep.log";
 
 export const name = "fakeren";
 export const inject = [
@@ -64,8 +67,6 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
       await registry.select(ev.sessionId, instanceId);
     }
 
-    // Build this instance's memory from the latest persisted turn first.
-    await agent.syncLatestTurn(instanceId, ev.sessionId);
     await registry.touch(ev.sessionId);
 
     const userText = ev.claimed.map((m) => m.content).join("\n");
@@ -78,6 +79,21 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
     const list = await registry.list();
     for (const m of list) {
       await agent.idleMaintenance(m.id);
+      // Build this instance's memory from each bound session's latest (now
+      // CLOSED) turn. Must NOT run at pre-step — the session is live then and
+      // dsh's sessionPersistence.load() rejects "live turn is open; use the
+      // live Session". At idle the turn is closed, so loadSessionEvents works.
+      const sessions = await registry.sessionsOf(dsh, m.id);
+      for (const sid of sessions) {
+        try {
+          await agent.syncLatestTurn(m.id, sid);
+          try {
+            fs.appendFileSync(PRESTEP_LOG, `[fakeren:idle] synced turn from session=${sid} instance=${m.id}\n`);
+          } catch { /* best-effort */ }
+        } catch (err) {
+          console.error(`[fakeren:idle] syncLatestTurn skipped for ${sid}:`, err);
+        }
+      }
     }
   });
 }
