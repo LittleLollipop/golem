@@ -4,6 +4,14 @@
  * Implements the existing SignalSource contract (D4 modality-agnostic host), so
  * it slots straight into the SignalBus → SituationalChannel.perceive(idle) path.
  *
+ * Async precompute (req_async_precompute): the costly capture + feature
+ * extraction lives in refresh(), which runs in the BACKGROUND (a timer daemon
+ * and/or the dsh idle phase) and fills a ready cache plus the AmbientBuffer.
+ * The SignalSource contract method poll() is a PURE foreground fetch of that
+ * cache — it NEVER captures — so sensory processing can never block the main
+ * turn's critical path. refresh() is budget-bounded (budgetMs) so the
+ * background work itself stays cheap and predictable.
+ *
  * Per-source switches (req_capture_whitelist): camera (image) and mic (audio)
  * are independently toggleable, each backed by its own scoped adapter (so a
  * whitelist / kind filter applies per sense). Default is minimal capture — both
@@ -26,7 +34,10 @@ export type AmbientSourceKind = "camera" | "mic";
 
 export class CameraMicSource implements SignalSource {
   private readonly buffer = new AmbientBuffer();
-  private lastCapture = 0;
+  /** Ready cache produced by refresh() — the "前台取" store. poll() never captures. */
+  private readonly precomputed: SignalObservation[] = [];
+  private lastRefreshedAt = 0;
+  private timer: ReturnType<typeof setInterval> | null = null;
   private readonly cfg = loadAmbientConfig();
   /** A single injected adapter (tests) drives both; otherwise two scoped ones. */
   private readonly cameraAdapter: AmbientCaptureAdapter;
@@ -49,7 +60,7 @@ export class CameraMicSource implements SignalSource {
     return {
       id: "camera_mic",
       name: "摄像头/麦克风",
-      description: "真实感官接入：周期性捕获摄像头帧与环境声特征，全本地处理不出行（可插拔采集适配器，摄像头/麦克风独立开关）",
+      description: "真实感官接入：周期性捕获摄像头帧与环境声特征，全本地处理不出行（可插拔采集适配器，摄像头/麦克风独立开关，异步预算不拖主回合）",
     };
   }
 
@@ -87,12 +98,24 @@ export class CameraMicSource implements SignalSource {
     }
   }
 
-  async poll(_instanceId: InstanceId): Promise<SignalObservation[]> {
-    if (!this.cameraOn && !this.micOn) return []; // minimal-by-default
-    const now = Date.now();
-    if (now - this.lastCapture < this.cfg.intervalMs) return []; // throttle
-    this.lastCapture = now;
+  // ── Async precompute (req_async_precompute) ────────────────────────────────
 
+  /**
+   * BACKGROUND compute: capture + extract features + push buffer + refresh the
+   * ready cache. Budget-bounded by budgetMs so it never hogs the background
+   * phase. Call this from a timer (start) and/or the dsh idle phase — NOT from
+   * the main turn.
+   */
+  async refresh(): Promise<number> {
+    if (!this.cameraOn && !this.micOn) {
+      this.precomputed.length = 0;
+      return 0;
+    }
+    // throttle: don't recompute more often than intervalMs
+    const now = Date.now();
+    if (now - this.lastRefreshedAt < this.cfg.intervalMs) return 0;
+
+    const start = Date.now();
     const gather = async (a: AmbientCaptureAdapter, on: boolean): Promise<AmbientSample[]> => {
       if (!on) return [];
       try {
@@ -107,8 +130,10 @@ export class CameraMicSource implements SignalSource {
       await gather(this.micAdapter, this.micOn),
     );
 
-    const out: SignalObservation[] = [];
+    this.precomputed.length = 0;
+    let n = 0;
     for (const s of samples.slice(0, this.cfg.maxSamplesPerPoll)) {
+      if (Date.now() - start > this.cfg.budgetMs) break; // 预算上限：超时就停
       const obs: SignalObservation = {
         text: s.features.summary,
         source: "camera_mic",
@@ -123,8 +148,45 @@ export class CameraMicSource implements SignalSource {
         },
       };
       this.buffer.push({ sample: s, observationText: s.features.summary, at: s.capturedAt });
-      out.push(obs);
+      this.precomputed.push(obs);
+      n++;
     }
-    return out;
+    this.lastRefreshedAt = Date.now();
+    return n;
+  }
+
+  /**
+   * FOREGROUND fetch — the SignalSource contract method. PURE: never captures,
+   * never blocks. Returns whatever refresh() has precomputed (req_async_precompute).
+   */
+  async poll(_instanceId: InstanceId): Promise<SignalObservation[]> {
+    return this.precomputed.slice();
+  }
+
+  /** Start the background daemon timer (true async precompute). Unref'd so it
+   *  never keeps the process alive on its own. */
+  start(intervalMs: number = this.cfg.intervalMs): void {
+    this.stop();
+    if (intervalMs > 0) {
+      this.timer = setInterval(() => {
+        void this.refresh();
+      }, intervalMs);
+      this.timer.unref?.();
+    }
+  }
+
+  stop(): void {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  }
+
+  isRunning(): boolean {
+    return this.timer !== null;
+  }
+
+  lastRefreshed(): number {
+    return this.lastRefreshedAt;
   }
 }

@@ -121,11 +121,15 @@ describe("CameraMicSource (req_sensor_camera_mic)", () => {
     expect(src.getBuffer().size()).toBe(0);
   });
 
-  it("when enabled, captures real snapshots and pushes into the ambient buffer", async () => {
+  it("when enabled, refresh() captures + pushes buffer; poll() then fetches the cache", async () => {
     process.env.FAKEREN_AMBIENT_CAMERA = "1";
     process.env.FAKEREN_AMBIENT_INTERVAL_MS = "0"; // no throttle for test
     fs.writeFileSync(path.join(tmpdir, "书桌.png"), makePng(800, 600));
     const src = new CameraMicSource(new LocalSnapshotAdapter(tmpdir));
+    // background compute
+    const n = await src.refresh();
+    expect(n).toBe(1);
+    // foreground fetch
     const obs = await src.poll("i1");
     expect(obs).toHaveLength(1);
     expect(obs[0].source).toBe("camera_mic");
@@ -135,15 +139,15 @@ describe("CameraMicSource (req_sensor_camera_mic)", () => {
     expect(src.getBuffer().recent(1)[0].observationText).toContain("书桌");
   });
 
-  it("throttles repeated polls within the interval", async () => {
+  it("throttles repeated refresh() within the interval (budget of time, not work)", async () => {
     process.env.FAKEREN_AMBIENT_CAMERA = "1";
     process.env.FAKEREN_AMBIENT_INTERVAL_MS = "100000";
     fs.writeFileSync(path.join(tmpdir, "x.png"), makePng(10, 10));
     const src = new CameraMicSource(new LocalSnapshotAdapter(tmpdir));
-    const first = await src.poll("i1");
-    expect(first.length).toBeGreaterThan(0);
-    // immediate second poll is throttled
-    expect(await src.poll("i1")).toHaveLength(0);
+    const first = await src.refresh();
+    expect(first).toBeGreaterThan(0);
+    // immediate second refresh is throttled (interval not elapsed)
+    expect(await src.refresh()).toBe(0);
   });
 });
 
@@ -218,14 +222,16 @@ describe("CameraMicSource runtime toggle (req_ambient_toggle)", () => {
     expect(src.isEnabled()).toBe(false);
     expect(await src.poll("i1")).toHaveLength(0);
 
-    // runtime ON — captures
+    // runtime ON — refresh computes, poll fetches
     src.setEnabled(true);
     expect(src.isEnabled()).toBe(true);
+    expect(await src.refresh()).toBeGreaterThan(0);
     expect((await src.poll("i1")).length).toBeGreaterThan(0);
 
-    // runtime OFF again
+    // runtime OFF again — refresh clears the cache
     src.setEnabled(false);
     expect(src.isEnabled()).toBe(false);
+    await src.refresh();
     expect(await src.poll("i1")).toHaveLength(0);
 
     // control file written and re-read by a fresh instance (survives restart)
@@ -259,14 +265,78 @@ describe("Capture whitelist + per-source switch (req_capture_whitelist)", () => 
     const src = new CameraMicSource(); // default scoped adapters (per-source kinds)
     src.setSourceEnabled("camera", true);
     src.setSourceEnabled("mic", false);
+    await src.refresh();
     const cam = await src.poll("i1");
     expect(cam.length).toBeGreaterThan(0);
     expect(cam.every((o) => o.meta?.ambientType === "image")).toBe(true);
 
     src.setSourceEnabled("camera", false);
     src.setSourceEnabled("mic", true);
+    await src.refresh();
     const mic = await src.poll("i1");
     expect(mic.length).toBeGreaterThan(0);
     expect(mic.every((o) => o.meta?.ambientType === "audio")).toBe(true);
+  });
+});
+
+describe("Async precompute (req_async_precompute)", () => {
+  const env = { ...process.env };
+  afterEach(() => {
+    process.env = { ...env };
+  });
+
+  it("poll() is a pure foreground fetch — it never captures, just returns the precomputed cache", async () => {
+    process.env.FAKEREN_AMBIENT_CONTROL = path.join(tmpdir, "ctrl.json");
+    process.env.FAKEREN_AMBIENT_INTERVAL_MS = "0";
+    const src = new CameraMicSource(new LocalSnapshotAdapter(tmpdir));
+    src.setSourceEnabled("camera", true);
+    fs.writeFileSync(path.join(tmpdir, "a.png"), makePng(10, 10));
+
+    // before any refresh, poll yields nothing and does NOT touch the buffer
+    expect(src.getBuffer().size()).toBe(0);
+    expect(await src.poll("i1")).toHaveLength(0);
+
+    // background compute fills the cache + buffer
+    const n = await src.refresh();
+    expect(n).toBeGreaterThan(0);
+
+    // poll is deterministic & non-capturing across calls
+    const obs1 = await src.poll("i1");
+    const obs2 = await src.poll("i1");
+    expect(obs1).toEqual(obs2);
+    expect(src.getBuffer().size()).toBe(n); // poll did not add new captures
+  });
+
+  it("refresh() respects the surface budget (FAKEREN_AMBIENT_MAX caps samples) — the deterministic '预算' cap", async () => {
+    process.env.FAKEREN_AMBIENT_CONTROL = path.join(tmpdir, "ctrl.json");
+    process.env.FAKEREN_AMBIENT_CAMERA = "1";
+    process.env.FAKEREN_AMBIENT_MAX = "2"; // only 2 of 5 may surface
+    process.env.FAKEREN_AMBIENT_INTERVAL_MS = "0";
+    const total = 5;
+    for (let i = 0; i < total; i++) fs.writeFileSync(path.join(tmpdir, `f${i}.png`), makePng(8, 8));
+    const src = new CameraMicSource(new LocalSnapshotAdapter(tmpdir));
+    const n = await src.refresh();
+    expect(n).toBe(2);
+    expect(src.getBuffer().size()).toBe(2);
+  });
+
+  it("start() runs a background timer that precomputes; poll() later sees the cache; stop() clears it", async () => {
+    process.env.FAKEREN_AMBIENT_CONTROL = path.join(tmpdir, "ctrl.json");
+    process.env.FAKEREN_AMBIENT_INTERVAL_MS = "0";
+    fs.writeFileSync(path.join(tmpdir, "b.png"), makePng(10, 10));
+    const src = new CameraMicSource(new LocalSnapshotAdapter(tmpdir));
+    src.setSourceEnabled("camera", true);
+    expect(src.isRunning()).toBe(false);
+
+    src.start(10); // 10ms daemon tick
+    expect(src.isRunning()).toBe(true);
+
+    // wait for at least one background tick to have refreshed the cache
+    await new Promise((r) => setTimeout(r, 60));
+    const obs = await src.poll("i1");
+    expect(obs.length).toBeGreaterThan(0); // filled by the background daemon
+
+    src.stop();
+    expect(src.isRunning()).toBe(false);
   });
 });

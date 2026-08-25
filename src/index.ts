@@ -72,6 +72,8 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
   // ── #45: real-sensory source (camera/mic), OFF by default (opt-in via env) ──
   const ambientSource = new CameraMicSource();
   bus.register(ambientSource);
+  // ── #49: background daemon — precompute the ambient cache off the critical path ──
+  ambientSource.start();
 
   // ── #22/#23/#25: opt-in LLM-backed seams (heuristic fallback otherwise) ──
   let llm: LlmClient | undefined = config.llm;
@@ -126,6 +128,9 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
 
   // ── Idle: maintain every instance's memory & situational awareness ──
   dsh.runIdle(async () => {
+    // #49: refresh the ambient precompute cache once per idle (the daemon timer
+    // also covers gaps between idles). Foreground poll() then just fetches it.
+    await ambientSource.refresh();
     const list = await registry.list();
     for (const m of list) {
       await agent.idleMaintenance(m.id);

@@ -22,8 +22,10 @@ export interface AmbientConfig {
   dir: string;
   /** minimum ms between captures (throttle) */
   intervalMs: number;
-  /** max samples surfaced per poll */
+  /** max samples surfaced per refresh (the "预算" sample cap) */
   maxSamplesPerPoll: number;
+  /** wall-clock budget (ms) for a single refresh() — keeps background work cheap (req_async_precompute) */
+  budgetMs: number;
   /** capture-scope whitelist: filename substrings that MUST match (empty = none) */
   whitelist: string[];
 }
@@ -36,6 +38,7 @@ export function loadAmbientConfig(): AmbientConfig {
     dir: process.env.FAKEREN_AMBIENT_DIR ?? "./ambient",
     intervalMs: Number(process.env.FAKEREN_AMBIENT_INTERVAL_MS ?? 60000),
     maxSamplesPerPoll: Number(process.env.FAKEREN_AMBIENT_MAX ?? 1),
+    budgetMs: Number(process.env.FAKEREN_AMBIENT_BUDGET_MS ?? 2000),
     whitelist: (process.env.FAKEREN_AMBIENT_WHITELIST ?? "")
       .split(",")
       .map((s) => s.trim())
