@@ -14,6 +14,8 @@ export interface SignalObservation {
   text: string;
   source: string;
   at: number;
+  /** optional structured metadata (e.g. local:true, ambientType) for provenance/audit. */
+  meta?: Record<string, unknown>;
 }
 
 /** Definition manifest a plugin advertises (what it is, not how it senses). */

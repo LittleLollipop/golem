@@ -21,6 +21,7 @@ import { RecallChannel, GraphRecallSource } from "./channels/recall-channel.js";
 import { SituationalChannel } from "./channels/situational-channel.js";
 import { SignalBus } from "./bus/signal-bus.js";
 import { LocalClockSource, FileNotesSource } from "./bus/sources.js";
+import { CameraMicSource } from "./ambient/ambient-source.js";
 import { Grader } from "./agent/grader.js";
 import { LlmGrader } from "./agent/llm-grader.js";
 import type { TaskClassifier } from "./agent/grader.js";
@@ -68,6 +69,8 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
   bus.register(new LocalClockSource());
   const notesPath = process.env.FAKEREN_NOTES_PATH;
   if (notesPath) bus.register(new FileNotesSource(notesPath));
+  // ── #45: real-sensory source (camera/mic), OFF by default (opt-in via env) ──
+  bus.register(new CameraMicSource());
 
   // ── #22/#23/#25: opt-in LLM-backed seams (heuristic fallback otherwise) ──
   let llm: LlmClient | undefined = config.llm;
