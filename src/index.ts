@@ -23,7 +23,7 @@ import { SignalBus } from "./bus/signal-bus.js";
 import { LocalClockSource, FileNotesSource } from "./bus/sources.js";
 import { Grader } from "./agent/grader.js";
 import { LlmGrader } from "./agent/llm-grader.js";
-import type { GradeEstimator } from "./agent/grader.js";
+import type { TaskClassifier } from "./agent/grader.js";
 import { FakerenAgent } from "./agent/fakeren-agent.js";
 import type { LlmClient } from "./llm/client.js";
 import { HttpLlmClient } from "./llm/client.js";
@@ -83,12 +83,12 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
     llm ? new LlmExtractor(llm) : undefined,
     llm ? new LlmValence(llm) : undefined,
   );
-  const grader: GradeEstimator = llm ? new LlmGrader(llm) : new Grader();
+  const classifier: TaskClassifier = llm ? new LlmGrader(llm) : new Grader();
 
   const drift = new DriftChannel(reader, dsh, registry);
   const recall = new RecallChannel(new GraphRecallSource(reader));
   const situational = new SituationalChannel();
-  const agent = new FakerenAgent(grader, drift, recall, situational, writer, consolidator, bus, dsh);
+  const agent = new FakerenAgent(classifier, drift, recall, situational, writer, consolidator, bus, dsh);
 
   // Instance binding immutability is enforced at InstanceRegistry.select()
   // (throws on mid-session conflict); no separate runtime re-check needed.
@@ -101,8 +101,10 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
       if (list.length === 0) {
         instanceId = (await registry.create("default", "默认假人", DEFAULT_PERSONA)).id;
       } else {
-        // Default to the most-recently-created instance (req_iso_session_select).
-        instanceId = list[list.length - 1].id;
+        // 默认实例优先级：配置页「设为默认」> 最近创建的实例 (req_iso_session_select)。
+        const ids = list.map((m) => m.id);
+        const def = await store.getDefaultInstance();
+        instanceId = def && ids.includes(def) ? def : ids[ids.length - 1];
       }
       await registry.select(ev.sessionId, instanceId);
     }

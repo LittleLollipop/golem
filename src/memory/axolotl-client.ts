@@ -40,6 +40,19 @@ export class AxolotlClient implements GraphStore {
     return (await res.json()) as T;
   }
 
+  private async put<T>(path: string, body: unknown): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`axolotl sidecar PUT ${path} -> ${res.status}: ${text}`);
+    }
+    return (await res.json()) as T;
+  }
+
   async ensureInstance(id: InstanceId): Promise<void> {
     await this.post<void>(`/instance/create`, { id });
   }
@@ -102,5 +115,14 @@ export class AxolotlClient implements GraphStore {
       sessionId,
     });
     return res.instanceId;
+  }
+
+  async getDefaultInstance(): Promise<InstanceId | null> {
+    const res = await this.get<{ instanceId: InstanceId | null }>(`/config/default`);
+    return res.instanceId ?? null;
+  }
+
+  async setDefaultInstance(id: InstanceId): Promise<void> {
+    await this.put<void>(`/config/default`, { instanceId: id });
   }
 }

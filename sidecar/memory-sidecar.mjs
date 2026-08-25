@@ -26,6 +26,12 @@
 
 import http from "node:http";
 import fs from "node:fs";
+import * as nodePath from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = nodePath.dirname(fileURLToPath(import.meta.url));
+const PUBLIC_DIR = nodePath.resolve(__dirname, "..", "public");
+const DEFAULT_FILE = nodePath.join(__dirname, "config-default.json");
 
 const ACCESS_LOG = process.env.FAKEREN_SIDECAR_LOG ?? "/tmp/fakeren-sidecar.log";
 function accessLog(line) {
@@ -182,7 +188,37 @@ const server = http.createServer(async (req, res) => {
   let payload = {};
 
   try {
-    if (req.method === "POST" && path === "/instance/create") {
+    // ── 配置页 (req_iso_config_page): 独立轻量 UI，不 patch dsh 核心 ──
+    if (req.method === "GET" && path === "/config") {
+      const htmlPath = nodePath.join(PUBLIC_DIR, "iso-config.html");
+      try {
+        const html = fs.readFileSync(htmlPath, "utf8");
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        res.end(html);
+        return;
+      } catch {
+        status = 404;
+        payload = { error: "config page not found" };
+      }
+    } else if (req.method === "GET" && path === "/config/default") {
+      // 返回当前默认实例 id（会话未绑定时采用）。
+      try {
+        const raw = fs.readFileSync(DEFAULT_FILE, "utf8");
+        payload = { instanceId: JSON.parse(raw).instanceId ?? null };
+      } catch {
+        payload = { instanceId: null };
+      }
+    } else if (req.method === "PUT" && path === "/config/default") {
+      // 持久化默认实例 id（用户通过配置页「设为默认」）。
+      const id = body.instanceId;
+      if (typeof id !== "string" || id.length === 0) {
+        status = 400;
+        payload = { error: "instanceId required" };
+      } else {
+        fs.writeFileSync(DEFAULT_FILE, JSON.stringify({ instanceId: id }));
+        payload = { instanceId: id };
+      }
+    } else if (req.method === "POST" && path === "/instance/create") {
       getInst(body.id);
       payload = {};
     } else if (req.method === "GET" && path === "/instances") {

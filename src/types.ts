@@ -99,14 +99,40 @@ export interface InstanceMeta {
 
 export type NodeType = "Entity" | "Event" | "MetaNode";
 
+/**
+ * AI 自身多维情绪 (req_memory_valence + dec_valence_ai_self)。
+ * 不是 lobster 那种「用户夸了/骂了」的用户情绪标签，而是假人对实体/事件
+ * *自己* 的第一人称 affective response：褒/贬/惧/恋。每个维度 ∈ [-1, 1]。
+ * 这是「人感」机制的核心：潜意识漏出的是「自己活过的事留下的情绪痕迹」。
+ */
+export interface ValenceVector {
+  /** 褒: 喜爱 / 认可 / 温暖 / 满足 */
+  praise: number;
+  /** 贬: 厌恶 / 否定 / 抵触 / 失望 */
+  blame: number;
+  /** 惧: 畏惧 / 不安 / 警惕 / 焦虑 */
+  fear: number;
+  /** 恋: 依恋 / 牵绊 / 舍不得 / 牵挂 */
+  attachment: number;
+}
+
+/** 把多维情绪压成一个标量，供按 |valence| 排序 / recall by magnitude 复用。 */
+export function valenceScalar(v: ValenceVector): number {
+  const s = (v.praise + v.attachment - v.blame - v.fear) / 2;
+  return Math.max(-1, Math.min(1, s));
+}
+
 export interface GraphNode {
   id: string;
   type: NodeType;
   label: string;
   instanceId: InstanceId;
   props: Record<string, unknown>;
-  /** AI's *own* emotional valence toward this node, [-1, 1] (req_memory_valence). */
+  /** AI's *own* emotional valence toward this node, [-1, 1] (req_memory_valence).
+   * 由 valenceVec 派生，供按 |valence| 排序 / recall by magnitude 复用。 */
   valence: number;
+  /** 多维情绪本体 (褒/贬/惧/恋)。记忆图按 valence 回忆与漂移加权。 */
+  valenceVec?: ValenceVector;
   /** Always true for fakeren — distinguishes from lobster's *user* emotion. */
   valenceSelf: true;
   /** Drift seed weight; lower → decays out of injection (Plan B). */
@@ -158,13 +184,23 @@ export interface ChannelContribution {
   valence?: number;
 }
 
-// ── Grading (任务分级器) ──────────────────────────────────────────────────
+// ── Task classification (按任务类型分级漏出, req_leak_by_task_class) ──────────
 
-export type Grade = "zero" | "weak" | "strong";
+/** 任务性质：决定潜意识漏出强度，不靠用户手动开关，由任务本身判定。 */
+export type TaskClass = "execute" | "creative" | "neutral";
 
-export interface GradeResult {
-  grade: Grade;
-  /** model confidence the user wants a factual/actionable answer, [0,1]. */
+/**
+ * 漏出强度（对应架构三通道路由）：
+ *  - "none"   执行命令 → 严谨，零漏（仅 recall，不注入潜意识）
+ *  - "weak"   一般询问 → 轻漏（drift + recall）
+ *  - "strong" 对话/创作/构思 → 灵气，强漏（drift + situational + recall）
+ */
+export type LeakLevel = "none" | "weak" | "strong";
+
+export interface TaskAssessment {
+  taskClass: TaskClass;
+  leakLevel: LeakLevel;
+  /** 分类置信度 [0,1] */
   confidence: number;
   reason: string;
 }

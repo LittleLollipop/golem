@@ -34,11 +34,21 @@ describe("MemoryWriter", () => {
     }
   });
 
-  it("HeuristicValence yields positive score for positive self-talk", () => {
+  it("HeuristicValence yields positive/negative/neutral 4-dim vectors", () => {
     const v = new HeuristicValence();
-    expect(v.estimate("我喜欢这个 很开心")).toBeGreaterThan(0);
-    expect(v.estimate("我讨厌这个 很焦虑")).toBeLessThan(0);
-    expect(v.estimate("中性内容")).toBe(0);
+    expect(v.estimate("我喜欢这个 很开心").praise).toBeGreaterThan(0);
+    expect(v.estimate("我讨厌这个 很焦虑").blame).toBeGreaterThan(0);
+    expect(v.estimate("中性内容")).toEqual({ praise: 0, blame: 0, fear: 0, attachment: 0 });
+  });
+
+  it("writeTurn stores valenceVec + derived scalar valence", async () => {
+    const store = new FakeGraphStore();
+    const w = new MemoryWriter(store);
+    await w.writeTurn({ instanceId: "ix", userText: '提到"foo"', assistantText: "y", timestamp: 1 });
+    for (const n of store.allNodes) {
+      expect(n.valenceVec).toBeDefined();
+      expect(typeof n.valence).toBe("number");
+    }
   });
 
   it("HeuristicExtractor extracts Event + quoted/capitalized entities", () => {

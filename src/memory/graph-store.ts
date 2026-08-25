@@ -67,4 +67,9 @@ export interface GraphStore {
   bindSession(sessionId: string, instanceId: InstanceId): Promise<void>;
   /** Resolve the instance a session is bound to, or null. */
   resolveSession(sessionId: string): Promise<InstanceId | null>;
+
+  /** Persisted default instance id (req_iso_session_select: 默认上次使用的). */
+  getDefaultInstance(): Promise<InstanceId | null>;
+  /** Set the persisted default instance id. */
+  setDefaultInstance(id: InstanceId): Promise<void>;
 }

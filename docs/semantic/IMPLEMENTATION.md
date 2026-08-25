@@ -67,16 +67,24 @@ fakeren/
 - `valenceSelf: true` 是节点固定属性：记的是 **AI 自身情绪**，非 lobster 的"用户情绪"。
 - `drift-channel.ts` 用 `e.props?.valence` 给 L0 漂移加权（情绪越强越易漏出），把"情绪"从被动记录变成主动驱动。
 
-## 本轮已完成（P1–P5 余下部分，2026-08-25）
+## 本轮已完成（P1–P5 + 设计对齐，2026-08-25）
 
-- **TODO#28 注入消息结构标记**：`loadSessionEvents` 在归一化时检测 `data.source.fakeren` 置 `injected` 标记；`syncLatestTurn` 据此过滤，彻底去掉 `PERSONA_PREFIX`/`LEAK_PREFIX` 前缀匹配的脆弱写法。
-- **#22/#23/#25 LLM 抽取 / valence / 分级（解耦缝）**：新增 `LlmClient` 接口 + `HttpLlmClient`（DeepSeek 兼容 chat-completions，可选启用）。`LlmExtractor`/`LlmValence`/`LlmGrader` 分别实现 `Extractor`/`ValenceEstimator`/`GradeEstimator`，**仅在配置 `llm` 或环境含 `DEEPSEEK_API_KEY` 时启用**，否则回落启发式——核心始终可跑可测。
-- **#24 情境信号源**：新增 `LocalClockSource`（星期+时段，桶变化才发，避免刷屏）+ 可选 `FileNotesSource`（`FAKEREN_NOTES_PATH` tail 新增行），在组合根注册进 `SignalBus`，L1 通道真正有信号源驱动。
-- **#27 多假人实例人格**：persona 从全局常量改为按 `InstanceMeta.persona` 存储并按实例注入（默认回落 `DEFAULT_PERSONA`）；新增 `scripts/manage-instance.mjs` CLI（list/create/show/persona）作为配置页 MVP。
+所有功能均先与 `.semantic-graph/` 设计节点（`req_*`/`dec_*`）逐条对齐后实现，对应需求节点已置 `status=done`。
+
+- **TODO#28 注入消息结构标记**：`loadSessionEvents` 归一化时检测 `data.source.fakeren` 置 `injected`，`syncLatestTurn` 据此过滤，弃用前缀匹配。
+- **#22 真实抽取器（`req_memory_recursive_growth` ✅）**：`Extractor` 缝 + `HeuristicExtractor`（兜底）+ `LlmExtractor`（设 `DEEPSEEK_API_KEY` 启用），产出 Entity/Event + causal/crossdomain_weak 边，不编造。
+- **#24 情境信号源（`req_signal_source_extensible` + `req_l1_situational_awareness` ✅）**：`SignalSource` 可插拔接口 + `LocalClockSource`/`FileNotesSource`，组合根注册进 `SignalBus`；宿主模态不可知（`decision_host_modality_agnostic`）。
+- **#23 多维 valence（`req_memory_valence` + `dec_valence_ai_self` ✅，已修正）**：改为 **AI 自身四维情绪**（褒/贬/惧/恋）。`ValenceEstimator.estimate` 返回 `ValenceVector`；`HeuristicValence`/`LlmValence` 均产出四维；`GraphNode.valenceVec` 落库，`valenceScalar` 派生单维标量供 recall by magnitude。纠正了此前「单维标量」对设计的偏离。
+- **#25 任务类型分级器（`req_leak_by_task_class` + `decision_leak_by_task_class` ✅，已修正）**：改为按**任务类型**分类 `execute/creative/neutral → leakLevel none/weak/strong`。`fakeren-agent.assemble` 据此路由：**执行命令→仅 recall（零漏，严守禁编造）**；对话/创作/构思→drift+situational+recall（强漏）。纠正了此前「问句强度」分类导致命令被最大漏出的偏离。
+- **#27 多假人隔离三件套（`req_iso_config_page` / `req_iso_session_select` / `req_iso_no_mid_switch` ✅）**：
+  - 配置页 UI：`public/iso-config.html`（列表/新建/设 persona/设默认），由 sidecar `GET /config` 服务，**独立轻量、不 patch dsh 核心**。
+  - 会话选定 + 默认实例：`onPreStep` 解析会话绑定实例，未绑定时采用配置页默认或最近创建；`getDefaultInstance/setDefaultInstance` 持久化。
+  - 中途不可切换：`InstanceRegistry.select` 绑定后拒绝变更（不变式）+ `assertStable` 复核。
 
 ## 仍未实现（明确范围）
 
-- **多假人 dsh UI 配置页**：当前是 CLI MVP（`manage-instance.mjs`）。真正的网页配置页需 dsh 前端补丁（同 `MessageItem` 那类本地补丁，在 `/tmp/dsh-src`，换 dsh 版本需重贴）。
-- **#26 语义图改名**：含义模糊且动 `.semantic-graph` 治理图有风险，本轮暂缓。
-- **真实 LLM 抽取需 key 才激活**：默认启发式抽取/分级仍在工作；要启用 LLM 版设 `DEEPSEEK_API_KEY`（或 `FAKEREN_LLM_*`）即可，无需改码。
-- dsh 运行时集成：代码与 seam 契约已对齐 base-analysis 源码核验结论，集成需在 dsh 侧加载插件验证（本环境已实际联调跑通 S1 闭环）。
+- **#26 语义图改名**：含义模糊且动 `.semantic-graph` 治理图有风险，暂缓。
+- **`req_leak_postfilter_dynamic`（执行时后筛双候选）**：当前仅有执行前任务分级（`req_leak_by_task_class` 已落地）。「同时产出带环境态/纯净两版候选 + 执行信号或交还用户后筛」尚未实现，留作后续。
+- **dsh 前端中间面板补丁**（人格/渗漏分开展示）：属 `/tmp/dsh-src` 本地补丁（`MessageItem.tsx` 等），非 fakeren 仓库，换 dsh 版本需重贴。
+- **真实 LLM 抽取/valence/分级需 key 才激活**：默认启发式在工作；设 `DEEPSEEK_API_KEY`（`FAKEREN_LLM_*`）即启用 LLM 版，无需改码。
+- dsh 运行时集成：seam 契约已对齐 base-analysis 源码核验，本环境已实际联调跑通 S1 闭环（`verify-prestep.mjs` PASS）。

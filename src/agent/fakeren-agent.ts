@@ -3,19 +3,19 @@
  * and runs idle maintenance (consolidation + situational re-perception + memory
  * sync from the RealHistoryCursor).
  *
- * Channel routing by grade (architecture §4):
- *   zero   → drift + recall + situational   (max leakage)
- *   weak   → drift + situational
- *   strong → recall only                     (factual, no leakage)
+ * Channel routing by task type (req_leak_by_task_class):
+ *   execute (执行命令) → recall only                 (严谨，零漏)
+ *   neutral (一般询问) → drift + recall              (轻漏)
+ *   creative (对话/创作/构思) → drift + situational + recall (灵气，强漏)
  */
 
 import type {
   UserMessage,
   ChannelContribution,
   InstanceId,
-  GradeResult,
+  TaskAssessment,
 } from "../types.js";
-import type { GradeEstimator } from "./grader.js";
+import type { TaskClassifier } from "./grader.js";
 import type { DriftChannel } from "../channels/drift-channel.js";
 import type { RecallChannel } from "../channels/recall-channel.js";
 import type { SituationalChannel } from "../channels/situational-channel.js";
@@ -26,7 +26,7 @@ import type { DshAdapter } from "../adapter/dsh-seams.js";
 
 export class FakerenAgent {
   constructor(
-    private readonly grader: GradeEstimator,
+    private readonly classifier: TaskClassifier,
     private readonly drift: DriftChannel,
     private readonly recall: RecallChannel,
     private readonly situational: SituationalChannel,
@@ -41,19 +41,19 @@ export class FakerenAgent {
     userText: string,
     instanceId: InstanceId,
     persona?: string,
-  ): Promise<{ messages: UserMessage[]; grade: GradeResult; contributions: ChannelContribution[] }> {
-    const grade = await this.grader.grade(userText);
+  ): Promise<{ messages: UserMessage[]; assess: TaskAssessment; contributions: ChannelContribution[] }> {
+    const assess = await this.classifier.assess(userText);
     const contributions: ChannelContribution[] = [];
 
-    if (grade.grade === "zero" || grade.grade === "weak") {
+    // 漏出强度由任务类型决定（非问句强度）：执行命令零漏，创作强漏。
+    if (assess.leakLevel === "weak" || assess.leakLevel === "strong") {
       contributions.push(...(await this.drift.gather(instanceId)));
     }
-    if (grade.grade === "zero") {
+    if (assess.leakLevel === "strong") {
       contributions.push(...(await this.situational.gather(userText, instanceId)));
     }
-    // Recall (targeted graph retrieval) is ALWAYS on. Gating it by grade was a
-    // mistake: the precise moment a user asks "what's your cat's name" is when
-    // recall MUST fire. Drift/situational stay grade-gated; recall does not.
+    // Recall (targeted graph retrieval) is ALWAYS on. 执行命令也只保留 recall，
+    // 绝不注入潜意识（严守 rule_mechanism_first 禁编造红线）。
     contributions.push(...(await this.recall.gather(userText, instanceId)));
 
     const messages: UserMessage[] = [];
@@ -78,11 +78,14 @@ export class FakerenAgent {
         content: `（你心里很清楚：）\n${block}`,
         meta: {
           channel: "assembled",
+          // 暴露任务类型/漏出强度，供 dsh 执行时后筛 (req_leak_postfilter_dynamic)。
+          taskClass: assess.taskClass,
+          leakLevel: assess.leakLevel,
           seeds: contributions.map((c) => ({ id: c.seedId, channel: c.channel, valence: c.valence })),
         },
       });
     }
-    return { messages, grade, contributions };
+    return { messages, assess, contributions };
   }
 
   /** Idle phase: maintain this instance's memory & situational awareness. */

@@ -8,7 +8,15 @@
  */
 
 import type { GraphStore } from "./graph-store.js";
-import type { GraphNode, GraphEdge, InstanceId, NodeType, EdgeKind } from "../types.js";
+import type {
+  GraphNode,
+  GraphEdge,
+  InstanceId,
+  NodeType,
+  EdgeKind,
+  ValenceVector,
+} from "../types.js";
+import { valenceScalar } from "../types.js";
 
 export interface TurnInput {
   instanceId: InstanceId;
@@ -35,22 +43,35 @@ export interface Extractor {
   extract(input: TurnInput): { nodes: RawNode[]; edges: RawEdge[] } | Promise<{ nodes: RawNode[]; edges: RawEdge[] }>;
 }
 
-/** AI's *own* emotional response to content, [-1, 1]. */
+/**
+ * AI 自身多维情绪 (req_memory_valence + dec_valence_ai_self)。
+ * 返回四维向量 (褒/贬/惧/恋)，各 ∈ [-1, 1]。Sync(启发式) 或 async(LLM, #23) 皆可。
+ */
 export interface ValenceEstimator {
-  /** Sync (heuristic) or async (LLM-backed, #23) — both satisfy this seam. */
-  estimate(text: string): number | Promise<number>;
+  estimate(text: string): ValenceVector | Promise<ValenceVector>;
 }
 
-/** Deterministic stand-in: emotion-signal lexicon sniff. Replace with LLM self-assessment. */
+/** 把单维信号映射成四维向量的小工具。 */
+function v(praise: number, blame: number, fear: number, attachment: number): ValenceVector {
+  const clamp = (x: number) => Math.max(-1, Math.min(1, x));
+  return { praise: clamp(praise), blame: clamp(blame), fear: clamp(fear), attachment: clamp(attachment) };
+}
+
+/** Deterministic stand-in: emotion-signal lexicon sniff across four dimensions.
+ *  Replace with LLM self-assessment (LlmValence) when a key is configured. */
 export class HeuristicValence implements ValenceEstimator {
-  private readonly pos = ["喜欢", "开心", "享受", "爱", "期待", "满意", "love", "happy", "enjoy"];
-  private readonly neg = ["讨厌", "害怕", "焦虑", "难过", "后悔", "怒", "hate", "fear", "sad", "regret"];
-  estimate(text: string): number {
+  private readonly pos = ["喜欢", "开心", "享受", "爱", "期待", "满意", "love", "happy", "enjoy", "温暖", "安心"];
+  private readonly neg = ["讨厌", "害怕", "焦虑", "难过", "后悔", "怒", "hate", "fear", "sad", "regret", "烦", "厌恶"];
+  private readonly afraid = ["怕", "恐惧", "警惕", "担心", "慌", "紧张", "scared", "anxious"];
+  private readonly attach = ["舍不得", "牵挂", "想你", "在乎", "离不开", "依恋", "思念", "miss"];
+  estimate(text: string): ValenceVector {
     const t = text.toLowerCase();
-    let s = 0;
-    for (const w of this.pos) if (t.includes(w)) s += 0.3;
-    for (const w of this.neg) if (t.includes(w)) s -= 0.3;
-    return Math.max(-1, Math.min(1, s));
+    let praise = 0, blame = 0, fear = 0, attachment = 0;
+    for (const w of this.pos) if (t.includes(w)) praise += 0.3;
+    for (const w of this.neg) if (t.includes(w)) blame += 0.3;
+    for (const w of this.afraid) if (t.includes(w)) fear += 0.3;
+    for (const w of this.attach) if (t.includes(w)) attachment += 0.3;
+    return v(praise, blame, fear, attachment);
   }
 }
 
@@ -91,13 +112,16 @@ export class MemoryWriter {
     const { nodes, edges } = await this.extractor.extract(input);
     const ts = input.timestamp ?? Date.now();
     for (const r of nodes) {
+      const text = r.label + " " + JSON.stringify(r.props ?? {});
+      const vec = await this.valence.estimate(text);
       const node: GraphNode = {
         id: r.id,
         type: r.type,
         label: r.label,
         instanceId: input.instanceId,
         props: r.props ?? {},
-        valence: await this.valence.estimate(r.label + " " + JSON.stringify(r.props ?? {})),
+        valence: valenceScalar(vec),
+        valenceVec: vec,
         valenceSelf: true,
         weight: 1.0,
         decayed: false,
