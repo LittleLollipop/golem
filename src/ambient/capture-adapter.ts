@@ -5,9 +5,9 @@
  * the user/system has placed in a drop directory (e.g. a real screenshot, a
  * real voice memo) and extracts *honest* features from the file's own metadata
  * (true dimensions, true capture time, filename semantics) — no pixel decoding,
- * no cloud, no model. NativeMediaAdapter optionally performs genuine capture
- * via platform tools, but ONLY when explicitly enabled and the binary exists;
- * it then reuses the same local feature extraction.
+ * no cloud, no model. NativeMediaAdapter optionally performs genuine capture via
+ * platform tools, but ONLY when explicitly enabled and the binary exists; it
+ * then reuses the same local feature extraction.
  *
  * Pixel-level scene understanding would need an image lib (sharp/pngjs) or a
  * model call — intentionally deferred (would break "local-only, no fabricate").
@@ -19,16 +19,20 @@ import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
-import type { AmbientCaptureAdapter, AmbientSample } from "./types.js";
+import type { AmbientCaptureAdapter, AmbientSample, AmbientKind } from "./types.js";
+
+export interface SnapshotOpts {
+  /** restrict to image / audio only */
+  kinds?: AmbientKind[];
+  /** capture-scope whitelist: file-name substrings that MUST match (req_capture_whitelist) */
+  whitelist?: string[];
+}
 
 const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "webp", "gif", "bmp"]);
 const AUDIO_EXT = new Set(["wav", "mp3", "m4a", "aac", "ogg", "flac"]);
 
 function extOf(p: string): string {
   return path.extname(p).replace(/^\./, "").toLowerCase();
-}
-function isImage(p: string): boolean {
-  return IMAGE_EXT.has(extOf(p));
 }
 function partOfDay(d: Date): string {
   const h = d.getHours();
@@ -49,7 +53,6 @@ function imageDimensions(buf: Buffer, ext: string): { w: number; h: number } | u
     return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
   }
   if ((ext === "jpg" || ext === "jpeg") && buf.length > 10) {
-    // walk JPEG markers for a Start-Of-Frame (0xFFC0..0xFFCF, excl. C4/C8/CC)
     let i = 2;
     while (i < buf.length - 9) {
       if (buf[i] === 0xff && buf[i + 1] >= 0xc0 && buf[i + 1] <= 0xcf) {
@@ -70,7 +73,6 @@ function imageDimensions(buf: Buffer, ext: string): { w: number; h: number } | u
 /** Honest WAV duration parsed from the RIFF header (mp3/m4a left undefined). */
 function audioDurationMs(buf: Buffer, ext: string): number | undefined {
   if (ext === "wav" && buf.length > 44 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46) {
-    // data chunk size @ 40 (little-endian); sampleRate @ 24, channels @ 22, bits @ 34
     const dataSize = buf.readUInt32LE(40);
     const sampleRate = buf.readUInt32LE(24) || 1;
     const channels = buf.readUInt16LE(22) || 1;
@@ -103,7 +105,8 @@ export function extractFeatures(localPath: string, capturedAt: number): AmbientS
   const ext = extOf(localPath);
   const buf = fs.readFileSync(localPath);
   const when = new Date(capturedAt);
-  if (isImage(localPath)) {
+  const isImg = IMAGE_EXT.has(ext);
+  if (isImg) {
     const dim = imageDimensions(buf, ext);
     const brightness = coarseBrightness(buf);
     const dominantHue = brightness > 0.6 ? "warm" : brightness < 0.35 ? "cool" : "neutral";
@@ -116,7 +119,6 @@ export function extractFeatures(localPath: string, capturedAt: number): AmbientS
       features: { summary, brightness, dominantHue, width: dim?.w, height: dim?.h },
     };
   }
-  // audio
   const dur = audioDurationMs(buf, ext);
   const energy = coarseBrightness(buf);
   const summary = `环境声：${fileNameSemantics(localPath)}${dur ? `（约${Math.round(dur / 1000)}秒` : ""}，${partOfDay(when)}）`;
@@ -132,13 +134,17 @@ export function extractFeatures(localPath: string, capturedAt: number): AmbientS
  * LocalSnapshotAdapter — reads the most recently modified real snapshot files
  * from a local drop directory. This is the DEFAULT adapter: it requires no
  * privilege, no cloud, and works today (dropping a real screenshot / voice memo
- * in the dir IS real sensory input).
+ * in the dir IS real sensory input). Honors per-source kinds + a capture-scope
+ * whitelist (req_capture_whitelist).
  */
 export class LocalSnapshotAdapter implements AmbientCaptureAdapter {
   readonly id = "local-snapshot";
   readonly description = "从本地快照目录读取真实图片/音频文件，本地提取特征（默认适配器）";
 
-  constructor(private readonly dir: string) {}
+  constructor(
+    private readonly dir: string,
+    private readonly opts: SnapshotOpts = {},
+  ) {}
 
   async isAvailable(): Promise<boolean> {
     try {
@@ -156,7 +162,21 @@ export class LocalSnapshotAdapter implements AmbientCaptureAdapter {
       return [];
     }
     const files = entries
-      .filter((e) => e.isFile() && (IMAGE_EXT.has(extOf(e.name)) || AUDIO_EXT.has(extOf(e.name))))
+      .filter((e) => e.isFile())
+      .filter((e) => {
+        const okImg = IMAGE_EXT.has(extOf(e.name));
+        const okAud = AUDIO_EXT.has(extOf(e.name));
+        if (!okImg && !okAud) return false;
+        if (this.opts.kinds && this.opts.kinds.length) {
+          if (okImg && !this.opts.kinds.includes("image")) return false;
+          if (okAud && !this.opts.kinds.includes("audio")) return false;
+        }
+        if (this.opts.whitelist && this.opts.whitelist.length) {
+          const lower = e.name.toLowerCase();
+          if (!this.opts.whitelist.some((w) => lower.includes(w.toLowerCase()))) return false;
+        }
+        return true;
+      })
       .map((e) => path.join(this.dir, e.name));
     // newest first (real mtime = real capture recency)
     files.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);

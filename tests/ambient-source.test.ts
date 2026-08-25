@@ -112,7 +112,9 @@ describe("CameraMicSource (req_sensor_camera_mic)", () => {
   });
 
   it("is OFF by default — poll yields nothing, buffer stays empty", async () => {
-    delete process.env.FAKEREN_AMBIENT_ENABLE;
+    delete process.env.FAKEREN_AMBIENT_CAMERA;
+    delete process.env.FAKEREN_AMBIENT_MIC;
+    delete process.env.FAKEREN_AMBIENT_CONTROL;
     const src = new CameraMicSource(new LocalSnapshotAdapter(tmpdir));
     expect(src.isEnabled()).toBe(false);
     expect(await src.poll("i1")).toHaveLength(0);
@@ -120,7 +122,7 @@ describe("CameraMicSource (req_sensor_camera_mic)", () => {
   });
 
   it("when enabled, captures real snapshots and pushes into the ambient buffer", async () => {
-    process.env.FAKEREN_AMBIENT_ENABLE = "1";
+    process.env.FAKEREN_AMBIENT_CAMERA = "1";
     process.env.FAKEREN_AMBIENT_INTERVAL_MS = "0"; // no throttle for test
     fs.writeFileSync(path.join(tmpdir, "书桌.png"), makePng(800, 600));
     const src = new CameraMicSource(new LocalSnapshotAdapter(tmpdir));
@@ -134,7 +136,7 @@ describe("CameraMicSource (req_sensor_camera_mic)", () => {
   });
 
   it("throttles repeated polls within the interval", async () => {
-    process.env.FAKEREN_AMBIENT_ENABLE = "1";
+    process.env.FAKEREN_AMBIENT_CAMERA = "1";
     process.env.FAKEREN_AMBIENT_INTERVAL_MS = "100000";
     fs.writeFileSync(path.join(tmpdir, "x.png"), makePng(10, 10));
     const src = new CameraMicSource(new LocalSnapshotAdapter(tmpdir));
@@ -228,9 +230,43 @@ describe("CameraMicSource runtime toggle (req_ambient_toggle)", () => {
 
     // control file written and re-read by a fresh instance (survives restart)
     const raw = JSON.parse(fs.readFileSync(ctrl, "utf8"));
-    expect(raw.enabled).toBe(false);
+    expect(raw.camera).toBe(false);
+    expect(raw.mic).toBe(false);
     const src2 = new CameraMicSource(new LocalSnapshotAdapter(tmpdir));
     expect(src2.isEnabled()).toBe(false);
     fs.rmSync(ctrl, { force: true });
+  });
+});
+
+describe("Capture whitelist + per-source switch (req_capture_whitelist)", () => {
+  it("LocalSnapshotAdapter honors whitelist (only matching filenames captured)", async () => {
+    fs.writeFileSync(path.join(tmpdir, "窗边逆光.png"), makePng(1280, 720));
+    fs.writeFileSync(path.join(tmpdir, "雨声.wav"), makeWav(300));
+    fs.writeFileSync(path.join(tmpdir, "notes.txt"), Buffer.from("ignored"));
+    const a = new LocalSnapshotAdapter(tmpdir, { whitelist: ["窗"] });
+    const s = await a.capture();
+    expect(s).toHaveLength(1);
+    expect(s[0].kind).toBe("image");
+  });
+
+  it("per-source switch isolates camera vs mic capture", async () => {
+    process.env.FAKEREN_AMBIENT_INTERVAL_MS = "0";
+    process.env.FAKEREN_AMBIENT_DIR = tmpdir;
+    process.env.FAKEREN_AMBIENT_CONTROL = path.join(tmpdir, "ambient-control-ps.json");
+    fs.writeFileSync(path.join(tmpdir, "桌.png"), makePng(64, 48));
+    fs.writeFileSync(path.join(tmpdir, "声.wav"), makeWav(200));
+
+    const src = new CameraMicSource(); // default scoped adapters (per-source kinds)
+    src.setSourceEnabled("camera", true);
+    src.setSourceEnabled("mic", false);
+    const cam = await src.poll("i1");
+    expect(cam.length).toBeGreaterThan(0);
+    expect(cam.every((o) => o.meta?.ambientType === "image")).toBe(true);
+
+    src.setSourceEnabled("camera", false);
+    src.setSourceEnabled("mic", true);
+    const mic = await src.poll("i1");
+    expect(mic.length).toBeGreaterThan(0);
+    expect(mic.every((o) => o.meta?.ambientType === "audio")).toBe(true);
   });
 });
