@@ -1,7 +1,8 @@
 /**
  * AmbientBuffer — the L0 drift seed pool's physical substrate (req_sensor_camera_mic
  * / req_ambient_decay_stream). Ambient is a STREAM, not a library: samples enter
- * here and age out by TTL + max-window. #46 adds decay weighting on top.
+ * here, age out by TTL + max-window, and are SOFT-DECAYED so stale ambience stops
+ * weighting on the present ("yesterday's ambience must not weigh on today").
  */
 
 import type { AmbientSample } from "./types.js";
@@ -13,12 +14,15 @@ export interface BufferedAmbient {
   at: number;
 }
 
+const DEFAULT_MIN_WEIGHT = 0.15;
+
 export class AmbientBuffer {
   private items: BufferedAmbient[] = [];
 
   constructor(
     private readonly maxItems = 64,
     private readonly ttlMs = 24 * 3600 * 1000,
+    private readonly halfLifeMs = 8 * 3600 * 1000,
   ) {}
 
   push(b: BufferedAmbient): void {
@@ -37,7 +41,36 @@ export class AmbientBuffer {
     }
   }
 
-  /** Most recent `limit` buffered samples, oldest→newest. */
+  /** Exponential freshness weight in [0,1]; 1 when just captured. */
+  private weightOf(item: BufferedAmbient, now: number): number {
+    const age = now - item.at;
+    if (age <= 0) return 1;
+    return Math.exp(-age / this.halfLifeMs);
+  }
+
+  /**
+   * Seed candidates for the L0 drift pool: freshest first, stale (decayed)
+   * samples excluded by minWeight. This is the req_ambient_decay_stream
+   * mechanism — an old ambient sample is never injected as a fresh seed.
+   */
+  seedCandidates(limit = 8, minWeight = DEFAULT_MIN_WEIGHT): BufferedAmbient[] {
+    const now = Date.now();
+    return this.items
+      .map((i) => ({ item: i, w: this.weightOf(i, now) }))
+      .filter((x) => x.w >= minWeight)
+      .sort((a, b) => b.w - a.w)
+      .slice(0, limit)
+      .map((x) => x.item);
+  }
+
+  /** Observability: how many samples are still "alive" vs decayed out. */
+  decayStats(): { total: number; fresh: number; decayedOut: number } {
+    const now = Date.now();
+    let fresh = 0;
+    for (const i of this.items) if (this.weightOf(i, now) >= DEFAULT_MIN_WEIGHT) fresh++;
+    return { total: this.items.length, fresh, decayedOut: this.items.length - fresh };
+  }
+
   recent(limit = 8): BufferedAmbient[] {
     return this.items.slice(-limit);
   }

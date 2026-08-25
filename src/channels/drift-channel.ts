@@ -18,6 +18,7 @@ import type { MemoryReader } from "../memory/reader.js";
 import type { DshAdapter } from "../adapter/dsh-seams.js";
 import type { InstanceRegistry } from "../registry/instance-registry.js";
 import type { ChannelContribution, InstanceId } from "../types.js";
+import type { AmbientBuffer } from "../ambient/ambient-buffer.js";
 
 export type DriftState = "staged" | "gathering" | "injecting" | "cooling";
 
@@ -28,6 +29,7 @@ export class DriftChannel {
     private readonly reader: MemoryReader,
     private readonly persistence: DshAdapter,
     private readonly registry: InstanceRegistry,
+    private readonly ambient?: AmbientBuffer,
   ) {}
 
   getState(): DriftState {
@@ -61,6 +63,20 @@ export class DriftChannel {
           channel: "drift",
           content: `[往昔] 你曾经历过：${String(sig.payload.text).slice(0, 60)}`,
           seedId: `drift_hist_${sid}_${sig.timestamp}`,
+        });
+      }
+    }
+
+    // (3) Ambient stream — DECAYED (req_ambient_decay_stream): only fresh
+    //     samples survive into the seed pool. Stale ambience (yesterday's room,
+    //     an old snapshot) never weighs on the present; seedCandidates already
+    //     excludes decayed weights, so the present keeps its own texture.
+    if (this.ambient) {
+      for (const a of this.ambient.seedCandidates(2)) {
+        out.push({
+          channel: "drift",
+          content: `[环境] ${a.observationText}`,
+          seedId: `ambient_${a.sample.capturedAt}`,
         });
       }
     }

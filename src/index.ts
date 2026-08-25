@@ -70,7 +70,8 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
   const notesPath = process.env.FAKEREN_NOTES_PATH;
   if (notesPath) bus.register(new FileNotesSource(notesPath));
   // ── #45: real-sensory source (camera/mic), OFF by default (opt-in via env) ──
-  bus.register(new CameraMicSource());
+  const ambientSource = new CameraMicSource();
+  bus.register(ambientSource);
 
   // ── #22/#23/#25: opt-in LLM-backed seams (heuristic fallback otherwise) ──
   let llm: LlmClient | undefined = config.llm;
@@ -88,7 +89,7 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
   );
   const classifier: TaskClassifier = llm ? new LlmGrader(llm) : new Grader();
 
-  const drift = new DriftChannel(reader, dsh, registry);
+  const drift = new DriftChannel(reader, dsh, registry, ambientSource.getBuffer());
   const recall = new RecallChannel(new GraphRecallSource(reader));
   const situational = new SituationalChannel();
   const agent = new FakerenAgent(classifier, drift, recall, situational, writer, consolidator, bus, dsh);

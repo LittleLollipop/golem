@@ -177,3 +177,23 @@ describe("AmbientBuffer (req_ambient_decay_stream substrate)", () => {
     expect(buf.size()).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe("AmbientBuffer decay (req_ambient_decay_stream)", () => {
+  it("excludes stale samples from seedCandidates (yesterday must not weigh on today)", () => {
+    const buf = new AmbientBuffer(64, 0, 1000); // halfLife 1s
+    buf.push({ sample: { kind: "image", capturedAt: Date.now(), localPath: "a", features: { summary: "此刻窗边有光" } }, observationText: "此刻窗边有光", at: Date.now() });
+    buf.push({ sample: { kind: "image", capturedAt: Date.now() - 10000, localPath: "b", features: { summary: "昨天的房间" } }, observationText: "昨天的房间", at: Date.now() - 10000 });
+    const cands = buf.seedCandidates(8, 0.15);
+    expect(cands.map((c) => c.observationText)).toEqual(["此刻窗边有光"]);
+    const stats = buf.decayStats();
+    expect(stats.total).toBe(2);
+    expect(stats.fresh).toBe(1);
+    expect(stats.decayedOut).toBe(1);
+  });
+
+  it("decayStats reflects freshness count", () => {
+    const buf = new AmbientBuffer(8, 0, 500);
+    buf.push({ sample: { kind: "image", capturedAt: Date.now(), localPath: "a", features: { summary: "now" } }, observationText: "now", at: Date.now() });
+    expect(buf.decayStats().fresh).toBe(1);
+  });
+});
