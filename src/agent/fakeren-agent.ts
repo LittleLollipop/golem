@@ -24,6 +24,7 @@ import type { Consolidator } from "../memory/consolidator.js";
 import type { SignalBus } from "../bus/signal-bus.js";
 import type { DshAdapter } from "../adapter/dsh-seams.js";
 import type { LeakPostFilter, PostFilterAction } from "../leak/post-filter.js";
+import { stampInjection } from "./provenance.js";
 
 export class FakerenAgent {
   constructor(
@@ -71,6 +72,9 @@ export class FakerenAgent {
       userText,
     });
     const contributions = decision.contributions;
+    // 种子溯源 (req_seed_provenance)：在注入时刻盖章 injectedAt，使审计轨迹基于
+    // 真实注入时间，而非模型事后自述（严守 rule_mechanism_first 禁编造红线）。
+    stampInjection(contributions);
 
     const messages: UserMessage[] = [];
     // Persona declaration (instance-scoped, #27). dsh-seams injects it ONCE per
@@ -98,7 +102,12 @@ export class FakerenAgent {
           taskClass: assess.taskClass,
           leakLevel: assess.leakLevel,
           postFilter: { action: decision.action, reason: decision.reason },
-          seeds: contributions.map((c) => ({ id: c.seedId, channel: c.channel, valence: c.valence })),
+          seeds: contributions.map((c) => ({
+            id: c.seedId,
+            channel: c.channel,
+            valence: c.valence,
+            provenance: c.provenance,
+          })),
         },
       });
     }

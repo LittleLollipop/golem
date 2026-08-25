@@ -9,12 +9,15 @@
  */
 
 import type { LearnedFact } from "./types.js";
+import type { SeedProvenance } from "../types.js";
 import type { DailyKnowledgeTracker } from "./daily-tracker.js";
 
 export interface L05Seed {
   observationText: string;
   seedId: string;
   meta?: Record<string, unknown>;
+  /** 种子溯源 (req_seed_provenance)：来源 URL + 选择路径（注入时机由 assemble 盖章） */
+  provenance?: SeedProvenance;
 }
 
 export class L05Trajectory {
@@ -39,6 +42,12 @@ export class L05Trajectory {
         source: f.source,
         sourceUrl: f.sourceUrl,
         chosenRank: f.chosenRank,
+        selectionPath: f.selectionPath,
+      },
+      // 种子溯源 (req_seed_provenance): source URL + selection path; injectedAt
+      // is stamped later by the assembler at real injection time.
+      provenance: {
+        source: f.sourceUrl,
         selectionPath: f.selectionPath,
       },
     }));

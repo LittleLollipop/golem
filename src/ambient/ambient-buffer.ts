@@ -54,13 +54,23 @@ export class AmbientBuffer {
    * mechanism — an old ambient sample is never injected as a fresh seed.
    */
   seedCandidates(limit = 8, minWeight = DEFAULT_MIN_WEIGHT): BufferedAmbient[] {
+    return this.seedCandidatesDetailed(limit, minWeight).map((x) => x.item);
+  }
+
+  /**
+   * Same as seedCandidates but also returns the freshness weight, so callers can
+   * record it in the seed's selection path (req_seed_provenance: why chosen).
+   */
+  seedCandidatesDetailed(
+    limit = 8,
+    minWeight = DEFAULT_MIN_WEIGHT,
+  ): { item: BufferedAmbient; weight: number }[] {
     const now = Date.now();
     return this.items
-      .map((i) => ({ item: i, w: this.weightOf(i, now) }))
-      .filter((x) => x.w >= minWeight)
-      .sort((a, b) => b.w - a.w)
-      .slice(0, limit)
-      .map((x) => x.item);
+      .map((i) => ({ item: i, weight: this.weightOf(i, now) }))
+      .filter((x) => x.weight >= minWeight)
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, limit);
   }
 
   /** Observability: how many samples are still "alive" vs decayed out. */

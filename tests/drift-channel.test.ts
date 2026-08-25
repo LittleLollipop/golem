@@ -30,6 +30,10 @@ describe("DriftChannel ambient integration (req_ambient_decay_stream)", () => {
     expect(ambientOnes[0].content).toContain("窗边有光");
     expect(ambientOnes[0].seedId).toContain("ambient_");
     expect(ambientOnes[0].channel).toBe("drift");
+    // 种子溯源 (req_seed_provenance)：环境样本来源 + 选择路径（注入时机由 assemble 盖章）
+    expect(ambientOnes[0].provenance?.source?.startsWith("sample:")).toBe(true);
+    expect(ambientOnes[0].provenance?.selectionPath).toMatch(/^ambient image fresh weight /);
+    expect(ambientOnes[0].provenance?.injectedAt).toBeUndefined();
   });
 
   it("emits no ambient contribution when no buffer is wired", async () => {
@@ -51,6 +55,10 @@ describe("DriftChannel L0.5 knowledge trajectory (req_l05_knowledge_trajectory)"
     expect(k).toHaveLength(1);
     expect(k[0].content).toContain("来源");
     expect(k[0].meta).toMatchObject({ chosenRank: 1, selectionPath: "选 top1 (rank 1)" });
+    // 种子溯源 (req_seed_provenance)：L0.5 来源 URL + 选择路径已挂到 provenance
+    expect(k[0].provenance?.source).toMatch(/^https?:\/\//);
+    expect(k[0].provenance?.selectionPath).toBe("选 top1 (rank 1)");
+    expect(k[0].provenance?.injectedAt).toBeUndefined();
     expect(learned).not.toBeNull();
     fs.rmSync(dir, { recursive: true, force: true });
   });

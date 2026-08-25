@@ -42,6 +42,10 @@ export class SituationalChannel {
       channel: "situational" as const,
       content: `[情境] ${f.text}`,
       seedId: `situational_${i}_${f.at}`,
+      provenance: {
+        source: `signal:${f.source}`,
+        selectionPath: `situational re-perceived on idle at ${new Date(f.at).toISOString()}`,
+      },
     }));
   }
 }

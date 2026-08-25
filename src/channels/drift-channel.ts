@@ -53,21 +53,27 @@ export class DriftChannel {
 
     // (1) Cross-domain weak edges — the L0 drift seed pool.
     const seeds = await this.reader.crossDomain(instanceId, 200);
-    for (const e of seeds.slice(0, this.leak.driftLimit)) {
-      if (e.props?.decayed) continue; // Plan B: stop re-injecting, keep record
+    seeds.slice(0, this.leak.driftLimit).forEach((e, rank) => {
+      if (e.props?.decayed) return; // Plan B: stop re-injecting, keep record
       const valence = Number(e.props?.valence ?? 0);
-      if (this.leak.minValence > 0 && valence < this.leak.minValence) continue; // 权重门槛
+      if (this.leak.minValence > 0 && valence < this.leak.minValence) return; // 权重门槛
       out.push({
         channel: "drift",
         content: `[跨域联想] ${e.from} ↔ ${e.to}`,
         seedId: `drift_xd_${e.from}_${e.to}`,
         valence,
+        provenance: {
+          source: `edge:${e.from}->${e.to}`,
+          selectionPath: `crossDomain by |valence| rank ${rank + 1} (valence ${valence})`,
+        },
       });
-    }
+    });
 
     // (2) RealHistoryCursor — this instance's FULL cross-session history.
     const sessionIds = await this.registry.sessionsOf(this.persistence, instanceId);
-    for (const sid of sessionIds.slice(-limit)) {
+    const recent = sessionIds.slice(-limit);
+    for (let idx = 0; idx < recent.length; idx++) {
+      const sid = recent[idx];
       const evs = await this.persistence.loadSessionEvents(sid);
       const sig = evs.find((e) => e.type === "user" && typeof e.payload?.text === "string");
       if (sig) {
@@ -75,6 +81,10 @@ export class DriftChannel {
           channel: "drift",
           content: `[往昔] 你曾经历过：${String(sig.payload.text).slice(0, 60)}`,
           seedId: `drift_hist_${sid}_${sig.timestamp}`,
+          provenance: {
+            source: `session:${sid}`,
+            selectionPath: `recent session #${idx + 1} (event ${sig.timestamp})`,
+          },
         });
       }
     }
@@ -84,11 +94,15 @@ export class DriftChannel {
     //     an old snapshot) never weighs on the present; seedCandidates already
     //     excludes decayed weights, so the present keeps its own texture.
     if (this.ambient) {
-      for (const a of this.ambient.seedCandidates(this.leak.ambientLimit)) {
+      for (const a of this.ambient.seedCandidatesDetailed(this.leak.ambientLimit)) {
         out.push({
           channel: "drift",
-          content: `[环境] ${a.observationText}`,
-          seedId: `ambient_${a.sample.capturedAt}`,
+          content: `[环境] ${a.item.observationText}`,
+          seedId: `ambient_${a.item.sample.capturedAt}`,
+          provenance: {
+            source: `sample:${a.item.sample.capturedAt}`,
+            selectionPath: `ambient ${a.item.sample.kind} fresh weight ${a.weight.toFixed(2)} (captured ${new Date(a.item.sample.capturedAt).toISOString()})`,
+          },
         });
       }
     }
@@ -97,11 +111,13 @@ export class DriftChannel {
     //     learned facts, each carrying its source citation + selection path.
     if (this.l05) {
       for (const s of this.l05.seedCandidates(instanceId, this.leak.l05Limit)) {
+        const prov = s.provenance;
         out.push({
           channel: "drift",
           content: `[知识轨迹] ${s.observationText}`,
           seedId: s.seedId,
           meta: s.meta,
+          provenance: prov,
         });
       }
     }

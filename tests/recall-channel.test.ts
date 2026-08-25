@@ -55,4 +55,17 @@ describe("RecallChannel", () => {
     expect(out[0].seedId.startsWith("recall_n1_")).toBe(true);
     expect(out[0].valence).toBe(0.5);
   });
+
+  it("attaches seed provenance (req_seed_provenance): source node id + selection path", async () => {
+    const src = new StubSource([node("n9", "橘猫"), node("n1", "alpha", 0.5)]);
+    const ch = new RecallChannel(src);
+    const out = await ch.gather("橘猫", "instA", 5);
+    expect(out).toHaveLength(2);
+    for (const c of out) {
+      expect(c.provenance).toBeDefined();
+      expect(c.provenance!.source.startsWith("node:")).toBe(true);
+      expect(c.provenance!.selectionPath).toMatch(/^recall keyword match rank \d+$/);
+      expect(c.provenance!.injectedAt).toBeUndefined(); // stamped later by assemble
+    }
+  });
 });

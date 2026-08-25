@@ -59,6 +59,10 @@ export class RecallChannel {
       content: `[图检索] ${n.label}`,
       seedId: `recall_${n.id}_${i}`,
       valence: typeof n.valence === "number" ? n.valence : 0,
+      provenance: {
+        source: `node:${n.id}`,
+        selectionPath: `recall keyword match rank ${i + 1}`,
+      },
     }));
   }
 }

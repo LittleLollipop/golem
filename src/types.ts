@@ -174,6 +174,24 @@ export interface GraphStats {
 
 export type ChannelName = "drift" | "recall" | "situational";
 
+/**
+ * Seed provenance (req_seed_provenance): every injected seed must record
+ *   - source:        where it came from — a URL / event id / node id / sample id
+ *   - selectionPath: WHY it was chosen (rank, capture kind, keyword trigger, …)
+ *   - injectedAt:    WHEN it was injected (ISO timestamp, stamped at assemble time)
+ * The source + selectionPath are filled by the producing channel; injectedAt is
+ * stamped by the assembler so the audit trail is grounded in real injection time,
+ * never in the model's self-report (rule_mechanism_first).
+ */
+export interface SeedProvenance {
+  /** 来源标识：知识 URL / 会话事件 id / 图节点 id / 环境样本 id（可机读可审计） */
+  source: string;
+  /** 选择路径：为何被选中（rank / capture kind / keyword trigger） */
+  selectionPath: string;
+  /** 注入时机：ISO 时间戳，由 assemble 在注入时刻盖章 */
+  injectedAt?: string;
+}
+
 /** A contribution assembled into the model-visible context, source-tagged. */
 export interface ChannelContribution {
   channel: ChannelName;
@@ -184,6 +202,8 @@ export interface ChannelContribution {
   valence?: number;
   /** structured metadata for attribution/audit (source citation, selection path, …). */
   meta?: Record<string, unknown>;
+  /** 种子溯源 (req_seed_provenance)：来源 + 选择路径（注入时机由 assemble 盖章） */
+  provenance?: SeedProvenance;
 }
 
 // ── Task classification (按任务类型分级漏出, req_leak_by_task_class) ──────────

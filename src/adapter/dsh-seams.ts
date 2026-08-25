@@ -165,6 +165,17 @@ export class DshAdapter {
       for (const m of augmented) {
         if (m.meta && (m.meta as any).channel === "assembled") {
           pLog(`[fakeren:pre-step] LEAK BLOCK >>>\n${m.content}\n<<< LEAK BLOCK`);
+          const seeds = (m.meta as any).seeds as any[] | undefined;
+          if (Array.isArray(seeds)) {
+            for (const s of seeds) {
+              const p = s.provenance;
+              if (p) {
+                pLog(
+                  `[fakeren:pre-step]   seed ${s.id} [${s.channel}] src=${p.source} path="${p.selectionPath}" at=${p.injectedAt ?? "?"}`,
+                );
+              }
+            }
+          }
         }
       }
       return {
