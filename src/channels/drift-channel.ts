@@ -19,6 +19,7 @@ import type { DshAdapter } from "../adapter/dsh-seams.js";
 import type { InstanceRegistry } from "../registry/instance-registry.js";
 import type { ChannelContribution, InstanceId } from "../types.js";
 import type { AmbientBuffer } from "../ambient/ambient-buffer.js";
+import type { L05Trajectory } from "../knowledge/l05-trajectory.js";
 
 export type DriftState = "staged" | "gathering" | "injecting" | "cooling";
 
@@ -30,6 +31,7 @@ export class DriftChannel {
     private readonly persistence: DshAdapter,
     private readonly registry: InstanceRegistry,
     private readonly ambient?: AmbientBuffer,
+    private readonly l05?: L05Trajectory,
   ) {}
 
   getState(): DriftState {
@@ -77,6 +79,19 @@ export class DriftChannel {
           channel: "drift",
           content: `[环境] ${a.observationText}`,
           seedId: `ambient_${a.sample.capturedAt}`,
+        });
+      }
+    }
+
+    // (4) L0.5 每日知识轨迹 (req_l05_knowledge_trajectory): the recent daily
+    //     learned facts, each carrying its source citation + selection path.
+    if (this.l05) {
+      for (const s of this.l05.seedCandidates(instanceId, 2)) {
+        out.push({
+          channel: "drift",
+          content: `[知识轨迹] ${s.observationText}`,
+          seedId: s.seedId,
+          meta: s.meta,
         });
       }
     }

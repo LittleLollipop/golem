@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { DriftChannel } from "../src/channels/drift-channel.js";
 import { AmbientBuffer } from "../src/ambient/ambient-buffer.js";
+import { StaticKnowledgeSource } from "../src/knowledge/static-source.js";
+import { DailyKnowledgeTracker } from "../src/knowledge/daily-tracker.js";
+import { L05Trajectory } from "../src/knowledge/l05-trajectory.js";
 import type { MemoryReader } from "../src/memory/reader.js";
 import type { DshAdapter } from "../src/adapter/dsh-seams.js";
 import type { InstanceRegistry } from "../src/registry/instance-registry.js";
@@ -30,5 +36,22 @@ describe("DriftChannel ambient integration (req_ambient_decay_stream)", () => {
     const ch = new DriftChannel(stubReader, stubPersist, stubRegistry);
     const out = await ch.gather("instA");
     expect(out.filter((c) => c.content.startsWith("[环境]"))).toHaveLength(0);
+  });
+});
+
+describe("DriftChannel L0.5 knowledge trajectory (req_l05_knowledge_trajectory)", () => {
+  it("surfaces recent learned facts as [知识轨迹] drift seeds with citation meta", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fakeren-l05-int-"));
+    const tr = new DailyKnowledgeTracker(new StaticKnowledgeSource(), dir);
+    const l05 = new L05Trajectory(tr);
+    const learned = await l05.tick("instA"); // learn top1
+    const ch = new DriftChannel(stubReader, stubPersist, stubRegistry, undefined, l05);
+    const out = await ch.gather("instA");
+    const k = out.filter((c) => c.content.startsWith("[知识轨迹]"));
+    expect(k).toHaveLength(1);
+    expect(k[0].content).toContain("来源");
+    expect(k[0].meta).toMatchObject({ chosenRank: 1, selectionPath: "选 top1 (rank 1)" });
+    expect(learned).not.toBeNull();
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });

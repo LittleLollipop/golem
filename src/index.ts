@@ -22,6 +22,9 @@ import { SituationalChannel } from "./channels/situational-channel.js";
 import { SignalBus } from "./bus/signal-bus.js";
 import { LocalClockSource, FileNotesSource } from "./bus/sources.js";
 import { CameraMicSource } from "./ambient/ambient-source.js";
+import { StaticKnowledgeSource } from "./knowledge/static-source.js";
+import { DailyKnowledgeTracker } from "./knowledge/daily-tracker.js";
+import { L05Trajectory } from "./knowledge/l05-trajectory.js";
 import { Grader } from "./agent/grader.js";
 import { LlmGrader } from "./agent/llm-grader.js";
 import type { TaskClassifier } from "./agent/grader.js";
@@ -91,7 +94,12 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
   );
   const classifier: TaskClassifier = llm ? new LlmGrader(llm) : new Grader();
 
-  const drift = new DriftChannel(reader, dsh, registry, ambientSource.getBuffer());
+  // ── #51: L0.5 每日知识轨迹 (pluggable knowledge source; static default) ──
+  const knowledgeDir = process.env.FAKEREN_KNOWLEDGE_DIR ?? "./.fakeren-knowledge";
+  const knowledgeTracker = new DailyKnowledgeTracker(new StaticKnowledgeSource(), knowledgeDir);
+  const l05 = new L05Trajectory(knowledgeTracker);
+
+  const drift = new DriftChannel(reader, dsh, registry, ambientSource.getBuffer(), l05);
   const recall = new RecallChannel(new GraphRecallSource(reader));
   const situational = new SituationalChannel();
   const agent = new FakerenAgent(classifier, drift, recall, situational, writer, consolidator, bus, dsh);
@@ -133,6 +141,8 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
     await ambientSource.refresh();
     const list = await registry.list();
     for (const m of list) {
+      // #51: ensure today's L0.5 knowledge fact is captured for this instance.
+      await l05.tick(m.id);
       await agent.idleMaintenance(m.id);
       // Build this instance's memory from each bound session's latest (now
       // CLOSED) turn. Must NOT run at pre-step — the session is live then and

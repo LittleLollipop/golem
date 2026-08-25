@@ -20,3 +20,6 @@ sidecar/config-default.json
 
 # Ambient runtime toggle state (regenerated at runtime, req_ambient_toggle)
 ambient-control.json
+
+# L0.5 per-instance knowledge trajectory ledger (regenerated at runtime, req_l05)
+.fakeren-knowledge/

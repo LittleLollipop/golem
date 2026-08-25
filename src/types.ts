@@ -182,6 +182,8 @@ export interface ChannelContribution {
   seedId: string;
   /** AI-self valence that weighted this (drift only). */
   valence?: number;
+  /** structured metadata for attribution/audit (source citation, selection path, …). */
+  meta?: Record<string, unknown>;
 }
 
 // ── Task classification (按任务类型分级漏出, req_leak_by_task_class) ──────────
