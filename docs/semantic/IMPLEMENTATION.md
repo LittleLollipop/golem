@@ -67,8 +67,16 @@ fakeren/
 - `valenceSelf: true` 是节点固定属性：记的是 **AI 自身情绪**，非 lobster 的"用户情绪"。
 - `drift-channel.ts` 用 `e.props?.valence` 给 L0 漂移加权（情绪越强越易漏出），把"情绪"从被动记录变成主动驱动。
 
-## 未在本次实现（明确范围）
+## 本轮已完成（P1–P5 余下部分，2026-08-25）
 
-- 真实 LLM 抽取器：当前 `HeuristicExtractor` / `HeuristicValence` 是确定性占位，`req_memory_auto_extract` 的"LLM 复用自身"留作后续替换（接口已留 `Extractor` / `ValenceEstimator` 缝）。
-- 图检索后端：`RecallChannel` 默认 `GraphRecallStub`，真实图遍历后端（接 `MemoryReader.recall`）后续替换。
-- dsh 运行时集成：本环境无 dsh 运行实例，集成需在 dsh 侧加载插件验证（代码与 seam 契约已对齐 base-analysis 源码核验结论）。
+- **TODO#28 注入消息结构标记**：`loadSessionEvents` 在归一化时检测 `data.source.fakeren` 置 `injected` 标记；`syncLatestTurn` 据此过滤，彻底去掉 `PERSONA_PREFIX`/`LEAK_PREFIX` 前缀匹配的脆弱写法。
+- **#22/#23/#25 LLM 抽取 / valence / 分级（解耦缝）**：新增 `LlmClient` 接口 + `HttpLlmClient`（DeepSeek 兼容 chat-completions，可选启用）。`LlmExtractor`/`LlmValence`/`LlmGrader` 分别实现 `Extractor`/`ValenceEstimator`/`GradeEstimator`，**仅在配置 `llm` 或环境含 `DEEPSEEK_API_KEY` 时启用**，否则回落启发式——核心始终可跑可测。
+- **#24 情境信号源**：新增 `LocalClockSource`（星期+时段，桶变化才发，避免刷屏）+ 可选 `FileNotesSource`（`FAKEREN_NOTES_PATH` tail 新增行），在组合根注册进 `SignalBus`，L1 通道真正有信号源驱动。
+- **#27 多假人实例人格**：persona 从全局常量改为按 `InstanceMeta.persona` 存储并按实例注入（默认回落 `DEFAULT_PERSONA`）；新增 `scripts/manage-instance.mjs` CLI（list/create/show/persona）作为配置页 MVP。
+
+## 仍未实现（明确范围）
+
+- **多假人 dsh UI 配置页**：当前是 CLI MVP（`manage-instance.mjs`）。真正的网页配置页需 dsh 前端补丁（同 `MessageItem` 那类本地补丁，在 `/tmp/dsh-src`，换 dsh 版本需重贴）。
+- **#26 语义图改名**：含义模糊且动 `.semantic-graph` 治理图有风险，本轮暂缓。
+- **真实 LLM 抽取需 key 才激活**：默认启发式抽取/分级仍在工作；要启用 LLM 版设 `DEEPSEEK_API_KEY`（或 `FAKEREN_LLM_*`）即可，无需改码。
+- dsh 运行时集成：代码与 seam 契约已对齐 base-analysis 源码核验结论，集成需在 dsh 侧加载插件验证（本环境已实际联调跑通 S1 闭环）。

@@ -33,6 +33,13 @@ export interface RawSessionEvent {
   type: string;
   timestamp: number;
   payload: Record<string, unknown>;
+  /**
+   * Set when this event was synthesized by fakeren (persona / subconscious
+   * leakage) rather than typed by the human. Lets syncLatestTurn exclude
+   * injected text from the memory graph without fragile string-prefix matching
+   * (TODO#28 resolved). Carried through from `data.source.fakeren` at load time.
+   */
+  injected?: boolean;
 }
 
 /** `ctx.sessionPersistence` — documented API (base-analysis §2.2). */
@@ -80,6 +87,12 @@ export interface InstanceMeta {
   createdAt: number;
   /** total turns this instance has lived through */
   turns: number;
+  /**
+   * Per-instance persona declaration (维度 I: multi-fakeren). Injected as the
+   * first user-role message each session so the model adopts this identity.
+   * When absent the agent falls back to DEFAULT_PERSONA (#27).
+   */
+  persona?: string;
 }
 
 // ── Memory graph (维度 H) ─────────────────────────────────────────────────

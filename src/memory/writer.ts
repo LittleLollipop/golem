@@ -31,12 +31,14 @@ export interface RawEdge {
 }
 
 export interface Extractor {
-  extract(input: TurnInput): { nodes: RawNode[]; edges: RawEdge[] };
+  /** Sync (heuristic) or async (LLM-backed, #22) — both satisfy this seam. */
+  extract(input: TurnInput): { nodes: RawNode[]; edges: RawEdge[] } | Promise<{ nodes: RawNode[]; edges: RawEdge[] }>;
 }
 
 /** AI's *own* emotional response to content, [-1, 1]. */
 export interface ValenceEstimator {
-  estimate(text: string): number;
+  /** Sync (heuristic) or async (LLM-backed, #23) — both satisfy this seam. */
+  estimate(text: string): number | Promise<number>;
 }
 
 /** Deterministic stand-in: emotion-signal lexicon sniff. Replace with LLM self-assessment. */
@@ -86,7 +88,7 @@ export class MemoryWriter {
   ) {}
 
   async writeTurn(input: TurnInput): Promise<void> {
-    const { nodes, edges } = this.extractor.extract(input);
+    const { nodes, edges } = await this.extractor.extract(input);
     const ts = input.timestamp ?? Date.now();
     for (const r of nodes) {
       const node: GraphNode = {
@@ -95,7 +97,7 @@ export class MemoryWriter {
         label: r.label,
         instanceId: input.instanceId,
         props: r.props ?? {},
-        valence: this.valence.estimate(r.label + " " + JSON.stringify(r.props ?? {})),
+        valence: await this.valence.estimate(r.label + " " + JSON.stringify(r.props ?? {})),
         valenceSelf: true,
         weight: 1.0,
         decayed: false,

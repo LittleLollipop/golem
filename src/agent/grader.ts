@@ -9,7 +9,17 @@
 
 import type { GradeResult, Grade } from "../types.js";
 
-export class Grader {
+/**
+ * Grading seam. v1 is the synchronous heuristic below; a model-based estimator
+ * (#25) implements the same interface and may return a Promise (the agent's
+ * assemble() awaits it either way). Fail-safe stays: lower confidence → more
+ * leakage, so mis-classifying a factual ask as "zero" only adds a little noise.
+ */
+export interface GradeEstimator {
+  grade(userText: string): GradeResult | Promise<GradeResult>;
+}
+
+export class Grader implements GradeEstimator {
   grade(userText: string): GradeResult {
     const confidence = this.estimate(userText);
     const grade: Grade = confidence > 0.7 ? "strong" : confidence > 0.4 ? "weak" : "zero";

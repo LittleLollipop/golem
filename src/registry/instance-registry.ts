@@ -20,17 +20,28 @@ export class InstanceRegistry {
     return await this.store.listMeta();
   }
 
-  async create(id: InstanceId, name: string): Promise<InstanceMeta> {
+  async create(id: InstanceId, name: string, persona?: string): Promise<InstanceMeta> {
     const list = await this.readInstances();
     if (list.some((m) => m.id === id)) return list.find((m) => m.id === id)!;
     await this.store.ensureInstance(id); // creates the empty axolotl graph
-    const meta: InstanceMeta = { id, name, createdAt: Date.now(), turns: 0 };
+    const meta: InstanceMeta = {
+      id,
+      name,
+      createdAt: Date.now(),
+      turns: 0,
+      ...(persona ? { persona } : {}),
+    };
     await this.store.setMeta(id, meta);
     return meta;
   }
 
   async list(): Promise<InstanceMeta[]> {
     return this.readInstances();
+  }
+
+  /** Read one instance's metadata (维度 I: multi-fakeren persona lookup). */
+  async meta(id: InstanceId): Promise<InstanceMeta | null> {
+    return await this.store.getMeta(id);
   }
 
   /** Bind a session to an instance. Throws if already bound to a *different* one. */

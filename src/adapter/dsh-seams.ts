@@ -54,14 +54,13 @@ function toText(content: unknown): string {
 }
 
 /**
- * Persona block. dsh's web profile has no fake-person identity, so the model
- * defaults to "I'm an AI" and rejects the leak as something to roleplay. We
- * establish the persona ourselves on the FIRST pre-step of each session (a
- * user-role message placed BEFORE the real question + leak). Re-injected per
- * session; the Set resets only on a full dsh restart (fine — a new session
- * just gets it again on its first turn).
+ * Persona injection. dsh's web profile has no fake-person identity, so the model
+ * defaults to "I'm an AI" and rejects the leak as something to roleplay. The
+ * agent surfaces a per-instance persona (channel="persona", #27); we inject it
+ * as a user-role message BEFORE the real question + leak, ONCE per session
+ * (the Set resets only on a full dsh restart, which is fine — a new session
+ * just gets it again on its first turn). The DEFAULT_PERSONA lives in index.ts.
  */
-const PERSONA = `你是「林夏」，一个真实存在的年轻女性，独自住在城市的一间小公寓里。你养了一只橘猫，叫豆豆；你性格内向，喜欢在雨天一个人待着听歌，面对陌生环境会本能地保持警惕。现在你在和朋友闲聊，请用第一人称自然地说话，不要声明自己是 AI 或没有身体——那些记忆与感受都是你真实的。`;
 
 /** Marker attached to injected message source so the dsh UI can render persona
  *  and subconscious leakage in a distinct middle panel instead of user bubbles. */
@@ -134,6 +133,23 @@ export class DshAdapter {
       // Only the *assembled* leakage block is newly injected — the baseline
       // claimed messages already live in ev.messages, so re-adding them would
       // duplicate the user's own turn.
+      //
+      // The agent surfaces two synthetic blocks: a per-instance persona
+      // (channel "persona") injected ONCE per session, and the subconscious
+      // leak block (channel "assembled") injected every turn.
+      const personaBlock = augmented.find(
+        (m) => m.meta && (m.meta as any).channel === "persona",
+      );
+      let personaMsg: unknown[] = [];
+      try {
+        if (personaBlock && sessionId && !personaSeen.has(sessionId)) {
+          personaSeen.add(sessionId);
+          personaMsg.push(fakerenUserMessage(personaBlock.content, "persona"));
+          pLog(`[fakeren:pre-step] persona injected for session=${sessionId}`);
+        }
+      } catch (err) {
+        pLog(`[fakeren:pre-step] WARNING: persona createUserMessage threw: ${String(err)}`);
+      }
       let leaked: unknown[] = [];
       try {
         leaked = augmented
@@ -150,14 +166,6 @@ export class DshAdapter {
         if (m.meta && (m.meta as any).channel === "assembled") {
           pLog(`[fakeren:pre-step] LEAK BLOCK >>>\n${m.content}\n<<< LEAK BLOCK`);
         }
-      }
-      // Inject the persona once per session, as the FIRST message (before the
-      // real question and the leak block) so the model adopts the identity.
-      const personaMsg: unknown[] = [];
-      if (sessionId && !personaSeen.has(sessionId)) {
-        personaSeen.add(sessionId);
-        personaMsg.push(fakerenUserMessage(PERSONA, "persona"));
-        pLog(`[fakeren:pre-step] persona injected for session=${sessionId}`);
       }
       return {
         kind: "enter",
@@ -220,10 +228,16 @@ export class DshAdapter {
           : (data as any)?.message?.content;
       const text = toText(raw);
       if (text.length === 0) continue;
+      // TODO#28: a message fakeren synthesized (persona / leak) carries
+      // `source.fakeren` in its dsh source tag. Surface that as `injected` so
+      // syncLatestTurn can exclude it from the memory graph structurally
+      // (no string-prefix matching).
+      const injected = Boolean((data as any)?.source?.fakeren);
       out.push({
         type: t === "user/message" ? "user" : "assistant",
         timestamp: typeof e?.time === "number" ? e.time : Date.now(),
         payload: { text },
+        ...(injected ? { injected: true } : {}),
       });
     }
     return out;

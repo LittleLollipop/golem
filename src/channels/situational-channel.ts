@@ -17,6 +17,10 @@ interface LearnedFact {
   at: number;
 }
 
+/** Cap per-instance learned facts so long-lived sessions don't grow unbounded
+ *  (the clock source polls every idle; keep only the most recent window). */
+const MAX_LEARNED = 64;
+
 export class SituationalChannel {
   private readonly learned = new Map<InstanceId, LearnedFact[]>();
 
@@ -25,6 +29,7 @@ export class SituationalChannel {
     const items = await bus.poll(instanceId);
     const arr = this.learned.get(instanceId) ?? [];
     for (const it of items) arr.push({ ...it, at: Date.now() });
+    if (arr.length > MAX_LEARNED) arr.splice(0, arr.length - MAX_LEARNED);
     this.learned.set(instanceId, arr);
     return items.length;
   }
