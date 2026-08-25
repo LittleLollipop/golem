@@ -21,6 +21,7 @@ class FakeWriter {
 }
 
 function makeAgent(evs: any[]) {
+  const postFilterStub: any = { decide: (c: any) => ({ action: "keep", contributions: c, reason: "stub" }) };
   return new FakerenAgent(
     new Grader(),
     stub,
@@ -30,6 +31,7 @@ function makeAgent(evs: any[]) {
     stub,
     stub,
     new FakePersistence(evs) as any,
+    postFilterStub,
   );
 }
 

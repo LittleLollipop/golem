@@ -29,6 +29,7 @@ import { Grader } from "./agent/grader.js";
 import { LlmGrader } from "./agent/llm-grader.js";
 import type { TaskClassifier } from "./agent/grader.js";
 import { FakerenAgent } from "./agent/fakeren-agent.js";
+import { LeakPostFilter } from "./leak/post-filter.js";
 import type { LlmClient } from "./llm/client.js";
 import { HttpLlmClient } from "./llm/client.js";
 import type { DshContext, UserMessage } from "./types.js";
@@ -102,7 +103,7 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
   const drift = new DriftChannel(reader, dsh, registry, ambientSource.getBuffer(), l05);
   const recall = new RecallChannel(new GraphRecallSource(reader));
   const situational = new SituationalChannel();
-  const agent = new FakerenAgent(classifier, drift, recall, situational, writer, consolidator, bus, dsh);
+  const agent = new FakerenAgent(classifier, drift, recall, situational, writer, consolidator, bus, dsh, new LeakPostFilter());
 
   // Instance binding immutability is enforced at InstanceRegistry.select()
   // (throws on mid-session conflict); no separate runtime re-check needed.
@@ -130,8 +131,16 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
     const persona = meta?.persona ?? DEFAULT_PERSONA;
 
     const userText = ev.claimed.map((m) => m.content).join("\n");
-    const { messages } = await agent.assemble(ev.claimed, userText, instanceId, persona);
-    return messages;
+    const res = await agent.assemble(ev.claimed, userText, instanceId, persona);
+    // 执行时后筛：歧义时主动交用户双候选（req_leak_postfilter_dynamic）。
+    if (res.postFilter?.userPrompt) {
+      try {
+        await ctx.userQuestions?.ask(res.postFilter.userPrompt);
+      } catch {
+        /* host may not support interactive questions */
+      }
+    }
+    return res.messages;
   });
 
   // ── Idle: maintain every instance's memory & situational awareness ──

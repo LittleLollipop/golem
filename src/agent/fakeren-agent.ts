@@ -23,6 +23,7 @@ import type { MemoryWriter } from "../memory/writer.js";
 import type { Consolidator } from "../memory/consolidator.js";
 import type { SignalBus } from "../bus/signal-bus.js";
 import type { DshAdapter } from "../adapter/dsh-seams.js";
+import type { LeakPostFilter, PostFilterAction } from "../leak/post-filter.js";
 
 export class FakerenAgent {
   constructor(
@@ -34,6 +35,7 @@ export class FakerenAgent {
     private readonly consolidator: Consolidator,
     private readonly bus: SignalBus,
     private readonly persistence: DshAdapter,
+    private readonly postFilter: LeakPostFilter,
   ) {}
 
   async assemble(
@@ -41,20 +43,34 @@ export class FakerenAgent {
     userText: string,
     instanceId: InstanceId,
     persona?: string,
-  ): Promise<{ messages: UserMessage[]; assess: TaskAssessment; contributions: ChannelContribution[] }> {
+  ): Promise<{
+    messages: UserMessage[];
+    assess: TaskAssessment;
+    contributions: ChannelContribution[];
+    postFilter: { action: PostFilterAction; reason: string; userPrompt?: string };
+  }> {
     const assess = await this.classifier.assess(userText);
-    const contributions: ChannelContribution[] = [];
+    const raw: ChannelContribution[] = [];
 
     // 漏出强度由任务类型决定（非问句强度）：执行命令零漏，创作强漏。
     if (assess.leakLevel === "weak" || assess.leakLevel === "strong") {
-      contributions.push(...(await this.drift.gather(instanceId)));
+      raw.push(...(await this.drift.gather(instanceId)));
     }
     if (assess.leakLevel === "strong") {
-      contributions.push(...(await this.situational.gather(userText, instanceId)));
+      raw.push(...(await this.situational.gather(userText, instanceId)));
     }
     // Recall (targeted graph retrieval) is ALWAYS on. 执行命令也只保留 recall，
     // 绝不注入潜意识（严守 rule_mechanism_first 禁编造红线）。
-    contributions.push(...(await this.recall.gather(userText, instanceId)));
+    raw.push(...(await this.recall.gather(userText, instanceId)));
+
+    // 执行时后筛 (req_leak_postfilter_dynamic): re-check against the execution-time
+    // signal and decide the FINAL fate of the leakage (strip / ask / keep).
+    const decision = this.postFilter.decide(raw, {
+      taskClass: assess.taskClass,
+      leakLevel: assess.leakLevel,
+      userText,
+    });
+    const contributions = decision.contributions;
 
     const messages: UserMessage[] = [];
     // Persona declaration (instance-scoped, #27). dsh-seams injects it ONCE per
@@ -71,21 +87,22 @@ export class FakerenAgent {
       // real extraction (#22/#23).
       const block = contributions
         .filter((c) => !c.content.startsWith("[往昔]"))
-        .map((c) => c.content.replace(/^\[(图检索|跨域联想|情境)\]\s*/, ""))
+        .map((c) => c.content.replace(/^\[(图检索|跨域联想|情境|环境|知识轨迹)\]\s*/, ""))
         .join("\n");
       messages.push({
         role: "user",
         content: `（你心里很清楚：）\n${block}`,
         meta: {
           channel: "assembled",
-          // 暴露任务类型/漏出强度，供 dsh 执行时后筛 (req_leak_postfilter_dynamic)。
+          // 暴露任务类型/漏出强度 + 后筛结论，供 dsh 执行时后筛 (req_leak_postfilter_dynamic)。
           taskClass: assess.taskClass,
           leakLevel: assess.leakLevel,
+          postFilter: { action: decision.action, reason: decision.reason },
           seeds: contributions.map((c) => ({ id: c.seedId, channel: c.channel, valence: c.valence })),
         },
       });
     }
-    return { messages, assess, contributions };
+    return { messages, assess, contributions, postFilter: { action: decision.action, reason: decision.reason, userPrompt: decision.userPrompt } };
   }
 
   /** Idle phase: maintain this instance's memory & situational awareness. */
