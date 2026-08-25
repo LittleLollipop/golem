@@ -18,6 +18,8 @@ export interface AmbientConfig {
   micEnabled: boolean;
   /** allow shelling out to platform capture tools (default OFF) */
   nativeEnabled: boolean;
+  /** run the independent background daemon timer (req_daemon_footprint). OFF → zero timer footprint (idle-only refresh). */
+  daemonEnabled: boolean;
   /** local snapshot drop directory */
   dir: string;
   /** minimum ms between captures (throttle) */
@@ -35,6 +37,7 @@ export function loadAmbientConfig(): AmbientConfig {
     cameraEnabled: process.env.FAKEREN_AMBIENT_CAMERA === "1",
     micEnabled: process.env.FAKEREN_AMBIENT_MIC === "1",
     nativeEnabled: process.env.FAKEREN_AMBIENT_NATIVE === "1",
+    daemonEnabled: process.env.FAKEREN_AMBIENT_DAEMON !== "0",
     dir: process.env.FAKEREN_AMBIENT_DIR ?? "./ambient",
     intervalMs: Number(process.env.FAKEREN_AMBIENT_INTERVAL_MS ?? 60000),
     maxSamplesPerPoll: Number(process.env.FAKEREN_AMBIENT_MAX ?? 1),

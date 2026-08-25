@@ -37,6 +37,7 @@ export class CameraMicSource implements SignalSource {
   /** Ready cache produced by refresh() — the "前台取" store. poll() never captures. */
   private readonly precomputed: SignalObservation[] = [];
   private lastRefreshedAt = 0;
+  private lastRefreshMs = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly cfg = loadAmbientConfig();
   /** A single injected adapter (tests) drives both; otherwise two scoped ones. */
@@ -74,6 +75,7 @@ export class CameraMicSource implements SignalSource {
     if (source === "camera") this.cameraOn = on;
     else this.micOn = on;
     this.persist();
+    this.reconcileDaemon(); // footprint follows enabled state (req_daemon_footprint)
   }
 
   isSourceEnabled(source: AmbientSourceKind): boolean {
@@ -151,6 +153,7 @@ export class CameraMicSource implements SignalSource {
       this.precomputed.push(obs);
       n++;
     }
+    this.lastRefreshMs = Date.now() - start;
     this.lastRefreshedAt = Date.now();
     return n;
   }
@@ -164,15 +167,25 @@ export class CameraMicSource implements SignalSource {
   }
 
   /** Start the background daemon timer (true async precompute). Unref'd so it
-   *  never keeps the process alive on its own. */
+   *  never keeps the process alive on its own. No-ops when the daemon is disabled
+   *  by config, or when no sense is enabled — keeping the footprint at zero
+   *  (req_daemon_footprint: 慢节奏即设计). */
   start(intervalMs: number = this.cfg.intervalMs): void {
     this.stop();
+    if (!this.cfg.daemonEnabled) return; // 0 footprint by config
+    if (!this.isEnabled()) return; // nothing to sense → no timer
     if (intervalMs > 0) {
       this.timer = setInterval(() => {
         void this.refresh();
       }, intervalMs);
       this.timer.unref?.();
     }
+  }
+
+  /** Keep the daemon timer in sync with the enabled state (req_daemon_footprint). */
+  private reconcileDaemon(): void {
+    if (this.isEnabled()) this.start();
+    else this.stop();
   }
 
   stop(): void {
@@ -188,5 +201,33 @@ export class CameraMicSource implements SignalSource {
 
   lastRefreshed(): number {
     return this.lastRefreshedAt;
+  }
+
+  /** Observable resource footprint (req_daemon_footprint). Lets ops/CLI inspect
+   *  exactly what the daemon costs before trusting it. */
+  footprint(): {
+    running: boolean;
+    daemonEnabled: boolean;
+    cameraOn: boolean;
+    micOn: boolean;
+    intervalMs: number;
+    budgetMs: number;
+    maxSamplesPerPoll: number;
+    lastRefreshMs: number;
+    lastSampleCount: number;
+    lastRefreshedAt: number;
+  } {
+    return {
+      running: this.isRunning(),
+      daemonEnabled: this.cfg.daemonEnabled,
+      cameraOn: this.cameraOn,
+      micOn: this.micOn,
+      intervalMs: this.cfg.intervalMs,
+      budgetMs: this.cfg.budgetMs,
+      maxSamplesPerPoll: this.cfg.maxSamplesPerPoll,
+      lastRefreshMs: this.lastRefreshMs,
+      lastSampleCount: this.precomputed.length,
+      lastRefreshedAt: this.lastRefreshedAt,
+    };
   }
 }

@@ -276,6 +276,7 @@ describe("Capture whitelist + per-source switch (req_capture_whitelist)", () => 
     const mic = await src.poll("i1");
     expect(mic.length).toBeGreaterThan(0);
     expect(mic.every((o) => o.meta?.ambientType === "audio")).toBe(true);
+    src.stop();
   });
 });
 
@@ -305,6 +306,7 @@ describe("Async precompute (req_async_precompute)", () => {
     const obs2 = await src.poll("i1");
     expect(obs1).toEqual(obs2);
     expect(src.getBuffer().size()).toBe(n); // poll did not add new captures
+    src.stop();
   });
 
   it("refresh() respects the surface budget (FAKEREN_AMBIENT_MAX caps samples) — the deterministic '预算' cap", async () => {
@@ -338,5 +340,53 @@ describe("Async precompute (req_async_precompute)", () => {
 
     src.stop();
     expect(src.isRunning()).toBe(false);
+  });
+});
+
+describe("Daemon footprint (req_daemon_footprint)", () => {
+  const env = { ...process.env };
+  afterEach(() => {
+    process.env = { ...env };
+  });
+
+  it("footprint is zero when the daemon is disabled by config (FAKEREN_AMBIENT_DAEMON=0)", async () => {
+    process.env.FAKEREN_AMBIENT_DAEMON = "0";
+    process.env.FAKEREN_AMBIENT_CAMERA = "1";
+    const src = new CameraMicSource(new LocalSnapshotAdapter(tmpdir));
+    src.start(); // must no-op
+    expect(src.isRunning()).toBe(false);
+    const fp = src.footprint();
+    expect(fp.daemonEnabled).toBe(false);
+    expect(fp.running).toBe(false);
+  });
+
+  it("daemon auto-stops when both senses are turned off — footprint follows enabled state", async () => {
+    process.env.FAKEREN_AMBIENT_CONTROL = path.join(tmpdir, "ctrl.json");
+    process.env.FAKEREN_AMBIENT_INTERVAL_MS = "50";
+    const src = new CameraMicSource(new LocalSnapshotAdapter(tmpdir));
+    src.setSourceEnabled("camera", true);
+    // turning a sense on starts the timer (daemon-enabled, sense on)
+    expect(src.isRunning()).toBe(true);
+    src.setEnabled(false); // both off → reconcileDaemon stops the timer
+    expect(src.isRunning()).toBe(false);
+    const fp = src.footprint();
+    expect(fp.running).toBe(false);
+    expect(fp.cameraOn).toBe(false);
+    expect(fp.micOn).toBe(false);
+  });
+
+  it("footprint() exposes the cost knobs and the last refresh duration", async () => {
+    process.env.FAKEREN_AMBIENT_CONTROL = path.join(tmpdir, "ctrl.json");
+    process.env.FAKEREN_AMBIENT_INTERVAL_MS = "0";
+    const src = new CameraMicSource(new LocalSnapshotAdapter(tmpdir));
+    src.setSourceEnabled("camera", true);
+    fs.writeFileSync(path.join(tmpdir, "a.png"), makePng(10, 10));
+    const n = await src.refresh();
+    const fp = src.footprint();
+    expect(fp.lastSampleCount).toBe(n);
+    expect(fp.lastRefreshMs).toBeGreaterThanOrEqual(0);
+    expect(fp.budgetMs).toBe(2000);
+    expect(fp.intervalMs).toBe(0);
+    src.stop();
   });
 });
