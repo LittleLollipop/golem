@@ -17,3 +17,6 @@ __pycache__/
 
 # Sidecar runtime default-instance state (regenerated at runtime)
 sidecar/config-default.json
+
+# Ambient runtime toggle state (regenerated at runtime, req_ambient_toggle)
+ambient-control.json

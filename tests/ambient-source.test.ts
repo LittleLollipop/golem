@@ -197,3 +197,40 @@ describe("AmbientBuffer decay (req_ambient_decay_stream)", () => {
     expect(buf.decayStats().fresh).toBe(1);
   });
 });
+
+describe("CameraMicSource runtime toggle (req_ambient_toggle)", () => {
+  const env = { ...process.env };
+  afterEach(() => {
+    process.env = { ...env };
+  });
+
+  it("setEnabled flips capture on/off without restart, and persists to the control file", async () => {
+    const ctrl = path.join(tmpdir, "ambient-control.json");
+    process.env.FAKEREN_AMBIENT_ENABLE = "0";
+    process.env.FAKEREN_AMBIENT_CONTROL = ctrl;
+    fs.rmSync(ctrl, { force: true });
+    fs.writeFileSync(path.join(tmpdir, "窗.png"), makePng(64, 48));
+
+    // initially OFF (no control file, env 0)
+    const src = new CameraMicSource(new LocalSnapshotAdapter(tmpdir));
+    expect(src.isEnabled()).toBe(false);
+    expect(await src.poll("i1")).toHaveLength(0);
+
+    // runtime ON — captures
+    src.setEnabled(true);
+    expect(src.isEnabled()).toBe(true);
+    expect((await src.poll("i1")).length).toBeGreaterThan(0);
+
+    // runtime OFF again
+    src.setEnabled(false);
+    expect(src.isEnabled()).toBe(false);
+    expect(await src.poll("i1")).toHaveLength(0);
+
+    // control file written and re-read by a fresh instance (survives restart)
+    const raw = JSON.parse(fs.readFileSync(ctrl, "utf8"));
+    expect(raw.enabled).toBe(false);
+    const src2 = new CameraMicSource(new LocalSnapshotAdapter(tmpdir));
+    expect(src2.isEnabled()).toBe(false);
+    fs.rmSync(ctrl, { force: true });
+  });
+});

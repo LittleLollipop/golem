@@ -4,12 +4,15 @@
  * Implements the existing SignalSource contract (D4 modality-agnostic host), so
  * it slots straight into the SignalBus → SituationalChannel.perceive(idle) path.
  * It is OFF by default (req_capture_whitelist minimal-by-default); enabling it
- * via FAKEREN_AMBIENT_ENABLE=1 starts periodic local capture. Every captured
- * sample is also pushed into the AmbientBuffer, which #46/#47 will wire into the
- * L0 drift seed pool.
+ * via FAKEREN_AMBIENT_ENABLE=1 (or the runtime control file, req_ambient_toggle)
+ * starts periodic local capture. Every captured sample is also pushed into the
+ * AmbientBuffer, which #46/#47 wire into the L0 drift seed pool.
  *
  * Failures NEVER fabricate (req_degrade_no_fabricate): adapter unavailable or
  * capture throws → empty observations.
+ *
+ * Runtime toggle (req_ambient_toggle): setEnabled flips capture + injection on
+ * or off WITHOUT a restart; the choice persists to ambient-control.json.
  */
 
 import type { InstanceId } from "../types.js";
@@ -17,17 +20,20 @@ import type { SignalObservation, SignalSource } from "../bus/signal-bus.js";
 import { AmbientBuffer } from "./ambient-buffer.js";
 import { LocalSnapshotAdapter, NativeMediaAdapter } from "./capture-adapter.js";
 import type { AmbientCaptureAdapter } from "./types.js";
-import { loadAmbientConfig } from "./config.js";
+import { loadAmbientConfig, loadAmbientControl, saveAmbientControl } from "./config.js";
 
 export class CameraMicSource implements SignalSource {
   private readonly buffer = new AmbientBuffer();
   private lastCapture = 0;
   private readonly cfg = loadAmbientConfig();
   private readonly adapter: AmbientCaptureAdapter;
+  /** runtime toggle (req_ambient_toggle): control file OR env can flip it live */
+  private enabled: boolean;
 
   constructor(adapter?: AmbientCaptureAdapter) {
-    // default: native if explicitly enabled+available, else local snapshot
     this.adapter = adapter ?? (this.cfg.nativeEnabled ? new NativeMediaAdapter() : new LocalSnapshotAdapter(this.cfg.dir));
+    // control file (if present) overrides the env default, enabling runtime toggle
+    this.enabled = loadAmbientControl()?.enabled ?? this.cfg.enabled;
   }
 
   definition() {
@@ -43,12 +49,22 @@ export class CameraMicSource implements SignalSource {
     return this.buffer;
   }
 
+  /** Runtime on/off switch (req_ambient_toggle) — no restart needed. Persists. */
+  setEnabled(on: boolean): void {
+    this.enabled = on;
+    try {
+      saveAmbientControl(on);
+    } catch {
+      /* best-effort: in-memory toggle still active */
+    }
+  }
+
   isEnabled(): boolean {
-    return this.cfg.enabled;
+    return this.enabled;
   }
 
   async poll(_instanceId: InstanceId): Promise<SignalObservation[]> {
-    if (!this.cfg.enabled) return []; // default OFF
+    if (!this.enabled) return []; // default OFF, or runtime-toggled OFF
     const now = Date.now();
     if (now - this.lastCapture < this.cfg.intervalMs) return []; // throttle
     this.lastCapture = now;
