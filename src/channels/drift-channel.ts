@@ -20,6 +20,8 @@ import type { InstanceRegistry } from "../registry/instance-registry.js";
 import type { ChannelContribution, InstanceId } from "../types.js";
 import type { AmbientBuffer } from "../ambient/ambient-buffer.js";
 import type { L05Trajectory } from "../knowledge/l05-trajectory.js";
+import type { LeakConfig } from "../leak/config.js";
+import { loadLeakConfig } from "../leak/config.js";
 
 export type DriftState = "staged" | "gathering" | "injecting" | "cooling";
 
@@ -32,6 +34,7 @@ export class DriftChannel {
     private readonly registry: InstanceRegistry,
     private readonly ambient?: AmbientBuffer,
     private readonly l05?: L05Trajectory,
+    private readonly leak: LeakConfig = loadLeakConfig(),
   ) {}
 
   getState(): DriftState {
@@ -42,11 +45,18 @@ export class DriftChannel {
     this.state = "gathering";
     const out: ChannelContribution[] = [];
 
+    // 触发概率 (req_leak_rate_tunable): 以概率 triggerProbability 决定是否注入任何渗漏。
+    if (this.leak.triggerProbability < 1 && Math.random() > this.leak.triggerProbability) {
+      this.state = "cooling";
+      return out;
+    }
+
     // (1) Cross-domain weak edges — the L0 drift seed pool.
     const seeds = await this.reader.crossDomain(instanceId, 200);
-    for (const e of seeds.slice(0, limit)) {
+    for (const e of seeds.slice(0, this.leak.driftLimit)) {
       if (e.props?.decayed) continue; // Plan B: stop re-injecting, keep record
       const valence = Number(e.props?.valence ?? 0);
+      if (this.leak.minValence > 0 && valence < this.leak.minValence) continue; // 权重门槛
       out.push({
         channel: "drift",
         content: `[跨域联想] ${e.from} ↔ ${e.to}`,
@@ -74,7 +84,7 @@ export class DriftChannel {
     //     an old snapshot) never weighs on the present; seedCandidates already
     //     excludes decayed weights, so the present keeps its own texture.
     if (this.ambient) {
-      for (const a of this.ambient.seedCandidates(2)) {
+      for (const a of this.ambient.seedCandidates(this.leak.ambientLimit)) {
         out.push({
           channel: "drift",
           content: `[环境] ${a.observationText}`,
@@ -86,7 +96,7 @@ export class DriftChannel {
     // (4) L0.5 每日知识轨迹 (req_l05_knowledge_trajectory): the recent daily
     //     learned facts, each carrying its source citation + selection path.
     if (this.l05) {
-      for (const s of this.l05.seedCandidates(instanceId, 2)) {
+      for (const s of this.l05.seedCandidates(instanceId, this.leak.l05Limit)) {
         out.push({
           channel: "drift",
           content: `[知识轨迹] ${s.observationText}`,
@@ -96,8 +106,11 @@ export class DriftChannel {
       }
     }
 
+    // 总条数上限 (req_leak_rate_tunable)：超过则截断（0 = 不封顶）。
+    const capped = this.leak.maxSeeds > 0 ? out.slice(0, this.leak.maxSeeds) : out;
+
     this.state = "injecting";
     this.state = "cooling";
-    return out;
+    return capped;
   }
 }

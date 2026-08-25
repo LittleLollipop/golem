@@ -30,6 +30,7 @@ import { LlmGrader } from "./agent/llm-grader.js";
 import type { TaskClassifier } from "./agent/grader.js";
 import { FakerenAgent } from "./agent/fakeren-agent.js";
 import { LeakPostFilter } from "./leak/post-filter.js";
+import { loadLeakConfig } from "./leak/config.js";
 import type { LlmClient } from "./llm/client.js";
 import { HttpLlmClient } from "./llm/client.js";
 import type { DshContext, UserMessage } from "./types.js";
@@ -100,7 +101,7 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
   const knowledgeTracker = new DailyKnowledgeTracker(new StaticKnowledgeSource(), knowledgeDir);
   const l05 = new L05Trajectory(knowledgeTracker);
 
-  const drift = new DriftChannel(reader, dsh, registry, ambientSource.getBuffer(), l05);
+  const drift = new DriftChannel(reader, dsh, registry, ambientSource.getBuffer(), l05, loadLeakConfig());
   const recall = new RecallChannel(new GraphRecallSource(reader));
   const situational = new SituationalChannel();
   const agent = new FakerenAgent(classifier, drift, recall, situational, writer, consolidator, bus, dsh, new LeakPostFilter());
