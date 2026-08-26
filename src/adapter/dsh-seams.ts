@@ -62,16 +62,25 @@ function toText(content: unknown): string {
  * just gets it again on its first turn). The DEFAULT_PERSONA lives in index.ts.
  */
 
-/** Marker attached to injected message source so the dsh UI can render persona
- *  and subconscious leakage in a distinct middle panel instead of user bubbles. */
+/**
+ * Source tag for injected messages. ONLY a minimal `kind` marker is carried in
+ * the dsh-persisted message source — `loadSessionEvents` (line ~246) uses the
+ * presence of `fakeren` to mark events as `injected: true` so they are excluded
+ * from the memory graph structurally.
+ *
+ * Seed provenance (id/source/selectionPath/injectedAt) is intentionally NOT
+ * placed here: it belongs to fakeren's own audit trail (the pre-step log,
+ * #55, and the scheduler log, #58), and embedding a nested object array into a
+ * dsh-persisted `source` triggers "non-JSON-serializable data" when the host
+ * dsh runtime serializes the `user/message` session event.
+ */
 function fakerenUserMessage(
   text: string,
   kind: "persona" | "subconscious",
-  seeds?: any[],
 ): ReturnType<typeof createUserMessage> {
   return createUserMessage({
     content: [{ type: "text" as const, text }],
-    source: { kind: "user", fakeren: { kind, seeds } } as any,
+    source: { kind: "user", fakeren: { kind } } as any,
   });
 }
 
@@ -154,10 +163,7 @@ export class DshAdapter {
       try {
         leaked = augmented
           .filter((m) => m.meta && (m.meta as any).channel === "assembled")
-          .map((m) => {
-            const seeds = (m.meta as any).seeds;
-            return fakerenUserMessage(m.content, "subconscious", seeds);
-          });
+          .map((m) => fakerenUserMessage(m.content, "subconscious"));
       } catch (err) {
         pLog(`[fakeren:pre-step] WARNING: createUserMessage threw: ${String(err)}`);
       }
