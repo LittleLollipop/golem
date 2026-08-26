@@ -23,6 +23,7 @@ import { SignalBus } from "./bus/signal-bus.js";
 import { LocalClockSource, FileNotesSource } from "./bus/sources.js";
 import { CameraMicSource } from "./ambient/ambient-source.js";
 import { StaticKnowledgeSource } from "./knowledge/static-source.js";
+import { WikipediaKnowledgeSource } from "./knowledge/wikipedia-source.js";
 import { DailyKnowledgeTracker } from "./knowledge/daily-tracker.js";
 import { L05Trajectory } from "./knowledge/l05-trajectory.js";
 import { Grader } from "./agent/grader.js";
@@ -99,10 +100,22 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
   );
   const classifier: TaskClassifier = llm ? new LlmGrader(llm) : new Grader();
 
-  // ── #51: L0.5 每日知识轨迹 (pluggable knowledge source; static default) ──
+  // ── #51: L0.5 每日知识轨迹 (live Wikipedia source; static available via env) ──
   const knowledgeDir = process.env.FAKEREN_KNOWLEDGE_DIR ?? "./.fakeren-knowledge";
-  const knowledgeTracker = new DailyKnowledgeTracker(new StaticKnowledgeSource(), knowledgeDir);
+  const knowledgeBackend = (process.env.FAKEREN_KNOWLEDGE_SOURCE ?? "wikipedia").toLowerCase();
+  const knowledgeSource =
+    knowledgeBackend === "static"
+      ? new StaticKnowledgeSource()
+      : new WikipediaKnowledgeSource({
+          lang: process.env.FAKEREN_KNOWLEDGE_LANG ?? "zh",
+          mode:
+            (process.env.FAKEREN_KNOWLEDGE_MODE as "topics" | "random" | undefined) ?? "topics",
+        });
+  const knowledgeTracker = new DailyKnowledgeTracker(knowledgeSource, knowledgeDir);
   const l05 = new L05Trajectory(knowledgeTracker, 7, schedulerLog);
+  console.log(
+    `[fakeren] L0.5 knowledge source = ${knowledgeBackend === "static" ? "static(curated)" : `wikipedia(${process.env.FAKEREN_KNOWLEDGE_LANG ?? "zh"}/${process.env.FAKEREN_KNOWLEDGE_MODE ?? "topics"})`}`,
+  );
 
   const drift = new DriftChannel(reader, dsh, registry, ambientSource.getBuffer(), l05, loadLeakConfig(), schedulerLog);
   const recall = new RecallChannel(new GraphRecallSource(reader));
