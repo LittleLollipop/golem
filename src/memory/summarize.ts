@@ -10,6 +10,54 @@
  * RecallChannel stays unchanged.
  */
 
+/**
+ * Strip model "thinking"/reasoning leakage from an assistant reply before
+ * summarizing. dsh sometimes prepends an English monologue
+ * ("The user is continuing the roleplay...") or wraps reasoning in <thinking>
+ * tags. Surfacing that in drift/recall would break character, so we drop it
+ * deterministically (no LLM, fully observable).
+ *
+ * Heuristic: drop a leading run of low-CJK-ratio sentence segments (English
+ * inner monologue, possibly naming the CJK persona like "I'm 林夏") up to the
+ * first segment that is predominantly Chinese — that segment is the real reply.
+ * If the whole text is low-CJK (a genuine English reply), nothing is stripped.
+ */
+function stripThinking(text: string): string {
+  let t = text ?? "";
+  // explicit reasoning tags (any casing, multiline)
+  t = t.replace(/<thinking>[\s\S]*?<\/thinking>/gi, " ");
+  t = t.replace(/<think>[\s\S]*?<\/think>/gi, " ");
+  t = t.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, " ");
+
+  const ratio = (s: string): number => {
+    const cjk = (s.match(/[一-鿿]/g) || []).length;
+    return cjk / Math.max(1, s.replace(/\s/g, "").length);
+  };
+  const segs: string[] = [];
+  const re = /[^。！？!?\n.!?]*(?:[。！？!?\n.!?]|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(t)) !== null) {
+    if (m[0].length === 0) {
+      re.lastIndex++;
+      if (re.lastIndex > t.length) break;
+      continue;
+    }
+    segs.push(m[0]);
+  }
+  const hasCjkReply = segs.some((s) => ratio(s) >= 0.3);
+  if (hasCjkReply) {
+    let consumed = 0;
+    for (const s of segs) {
+      if (ratio(s) < 0.3) consumed += s.length;
+      else break;
+    }
+    if (consumed > 0 && consumed < t.length) t = t.slice(consumed);
+  }
+  return t.replace(/[ \t]{2,}/g, " ").replace(/\n{2,}/g, "\n").trim();
+}
+
+export { stripThinking };
+
 /** Split into sentences, keeping trailing punctuation on each piece. */
 function splitSentences(text: string): string[] {
   const trimmed = (text ?? "").replace(/\s+/g, " ").trim();
@@ -49,7 +97,7 @@ export function summarizeReply(
 ): string {
   const maxChars = opts.maxChars ?? 120;
   const maxSentences = opts.maxSentences ?? 3;
-  const sentences = splitSentences(assistantText);
+  const sentences = splitSentences(stripThinking(assistantText));
   if (sentences.length === 0) return "";
   if (sentences.length === 1) {
     const only = sentences[0];

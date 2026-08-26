@@ -23,6 +23,7 @@ import type { L05Trajectory } from "../knowledge/l05-trajectory.js";
 import type { LeakConfig } from "../leak/config.js";
 import type { BackgroundTaskLog } from "../scheduler/background-log.js";
 import { loadLeakConfig } from "../leak/config.js";
+import { summarizeReply } from "../memory/summarize.js";
 
 export type DriftState = "staged" | "gathering" | "injecting" | "cooling";
 
@@ -80,19 +81,30 @@ export class DriftChannel {
     for (let idx = 0; idx < recent.length; idx++) {
       const sid = recent[idx];
       const evs = await this.persistence.loadSessionEvents(sid);
-      const sig = evs.find((e) => e.type === "user" && typeof e.payload?.text === "string");
-      if (sig) {
-        out.push({
-          channel: "drift",
-          content: `[往昔] 你曾经历过：${String(sig.payload.text).slice(0, 60)}`,
-          seedId: `drift_hist_${sid}_${sig.timestamp}`,
-          provenance: {
-            source: `session:${sid}`,
-            selectionPath: `recent session #${idx + 1} (event ${sig.timestamp})`,
-          },
-        });
-        counts.hist++;
+      const sigIdx = evs.findIndex(
+        (e) => e.type === "user" && typeof e.payload?.text === "string",
+      );
+      if (sigIdx < 0) continue;
+      const sig = evs[sigIdx];
+      // 往昔回放同时带出当轮助手的回复（记忆的回应，而非只剩提问）：配对同会话、紧随
+      // 其后的 assistant 事件，跑确定性摘要（与 recall 通道同一 summarizer、同一 ↳ 标记）。
+      const reply = evs.slice(sigIdx + 1).find((e) => e.type === "assistant");
+      let content = `[往昔] 你曾经历过：${String(sig.payload.text).slice(0, 60)}`;
+      const replyText = reply && typeof reply.payload?.text === "string" ? String(reply.payload.text) : "";
+      if (replyText.trim()) {
+        const summary = summarizeReply(replyText, String(sig.payload.text));
+        if (summary) content += `\n  ↳ ${summary}`;
       }
+      out.push({
+        channel: "drift",
+        content,
+        seedId: `drift_hist_${sid}_${sig.timestamp}`,
+        provenance: {
+          source: `session:${sid}`,
+          selectionPath: `recent session #${idx + 1} (event ${sig.timestamp})${replyText.trim() ? " + reply surfaced" : ""}`,
+        },
+      });
+      counts.hist++;
     }
 
     // (3) Ambient stream — DECAYED (req_ambient_decay_stream): only fresh

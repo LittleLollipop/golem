@@ -14,6 +14,7 @@
 
 import type { ChannelContribution, InstanceId, GraphNode } from "../types.js";
 import type { MemoryReader } from "../memory/reader.js";
+import { stripThinking } from "../memory/summarize.js";
 
 export interface RecallSource {
   /** Returns targeted recall nodes from the agent's own memory graph. */
@@ -64,7 +65,11 @@ export class RecallChannel {
           : typeof n.props?.assistantText === "string"
             ? n.props.assistantText
             : "";
-      const summaryLine = summary ? `\n  ↳ ${summary}` : "";
+      // Display-time guard: old nodes may carry raw model thinking in either
+      // field. Strip it here so a malformed memory never leaks a monologue,
+      // independent of when/how it was written.
+      const cleanSummary = stripThinking(summary);
+      const summaryLine = cleanSummary ? `\n  ↳ ${cleanSummary}` : "";
       return {
         channel: "recall" as const,
         content: `[图检索] ${n.label}${summaryLine}`,

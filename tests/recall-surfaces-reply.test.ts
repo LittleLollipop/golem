@@ -65,4 +65,39 @@ describe("RecallChannel surfaces the reply summary (assistantSummary)", () => {
     const contribs = await ch.gather("那天的雨", "instA");
     expect(contribs[0].content).toContain("她记得那天的雨");
   });
+
+  it("strips thinking from a stored dirty assistantSummary at surfacing time", async () => {
+    const dirty = "The user is asking who I am. <thinking>stay in character</thinking>我是林夏，一个人住在城里。";
+    const src = { recall: async () => [node({ assistantSummary: dirty })] };
+    const ch = new RecallChannel(src as any);
+    const contribs = await ch.gather("你是谁", "instA");
+    const c = contribs[0].content;
+    expect(c).not.toContain("roleplay");
+    expect(c).not.toContain("stay in character");
+    expect(c).toContain("林夏");
+  });
+});
+
+describe("summarizeReply strips model thinking/inner-monologue", () => {
+  it("removes <thinking> reasoning blocks", () => {
+    const t = "<thinking>The user is asking about news.</thinking>今天新闻：甲醛白菜问题引发关注。";
+    const s = summarizeReply(t, "今天新闻");
+    expect(s).not.toContain("thinking");
+    expect(s).not.toContain("user is asking");
+    expect(s).toContain("甲醛");
+  });
+
+  it("drops a leading English monologue before the first CJK reply", () => {
+    const t = "The user is continuing the roleplay. I'm 林夏, a calm companion. 今天为你整理了三条新闻。";
+    const s = summarizeReply(t, "新闻");
+    expect(s).not.toContain("roleplay");
+    expect(s).not.toContain("companion");
+    expect(s).toContain("新闻");
+  });
+
+  it("keeps a fully-English reply intact", () => {
+    const t = "Sure, here is the summary of today's headlines.";
+    const s = summarizeReply(t, "news");
+    expect(s).toContain("headlines");
+  });
 });
