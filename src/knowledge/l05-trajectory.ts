@@ -11,6 +11,7 @@
 import type { LearnedFact } from "./types.js";
 import type { SeedProvenance } from "../types.js";
 import type { DailyKnowledgeTracker } from "./daily-tracker.js";
+import type { BackgroundTaskLog } from "../scheduler/background-log.js";
 
 export interface L05Seed {
   observationText: string;
@@ -24,11 +25,17 @@ export class L05Trajectory {
   constructor(
     private readonly tracker: DailyKnowledgeTracker,
     private readonly windowSize = 7,
+    private readonly log?: BackgroundTaskLog,
   ) {}
 
   /** Idle tick: ensure today's fact is learned for this instance. */
   async tick(instanceId: string): Promise<LearnedFact | null> {
-    return this.tracker.learnOne(instanceId);
+    const fact = await this.tracker.learnOne(instanceId);
+    // 后台调度日志：记录"学了什么"（req_background_task_log）
+    if (fact && this.log) {
+      this.log.learn(instanceId, fact);
+    }
+    return fact;
   }
 
   seedCandidates(instanceId: string, limit = 2): L05Seed[] {

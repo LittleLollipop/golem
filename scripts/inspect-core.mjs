@@ -59,3 +59,38 @@ export function listLedgerInstances(dir, readdirSync) {
     return [];
   }
 }
+
+/**
+ * 后台调度运行日志（req_background_task_log）默认路径，与运行时一致。
+ */
+export function defaultSchedulerLogPath(env = process.env) {
+  return env.FAKEREN_SCHEDULER_LOG ?? ".fakeren-scheduler.log";
+}
+
+/**
+ * Parse one JSONL scheduler-log line into a structured event. Returns null for
+ * blank / unparseable lines so callers can filter the whole file safely.
+ * Event shape: { ts, kind: "learn"|"refresh"|"drift", instanceId, detail }.
+ */
+export function parseSchedulerEvent(line) {
+  const t = (line ?? "").trim();
+  if (!t) return null;
+  try {
+    const e = JSON.parse(t);
+    if (e && typeof e.kind === "string" && typeof e.ts === "string") return e;
+  } catch {
+    /* skip malformed line */
+  }
+  return null;
+}
+
+/** Extract the most recent `n` scheduler events from a log's text. */
+export function parseSchedulerLog(text, n = 50) {
+  if (!text) return [];
+  const events = [];
+  for (const line of text.split("\n")) {
+    const e = parseSchedulerEvent(line);
+    if (e) events.push(e);
+  }
+  return n > 0 ? events.slice(-n) : events;
+}

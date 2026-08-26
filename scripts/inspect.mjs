@@ -9,19 +9,28 @@
  *   node scripts/inspect.mjs state [instanceId?]
  *   node scripts/inspect.mjs learned [instanceId?]
  *   node scripts/inspect.mjs seeds [n=20]
+ *   node scripts/inspect.mjs log [n=50]
  *
  * 可调环境变量（与运行时一致）：
- *   FAKEREN_SIDECAR_URL   默认 http://127.0.0.1:8741
- *   FAKEREN_KNOWLEDGE_DIR 默认 ./.fakeren-knowledge
- *   FAKEREN_PRESTEP_LOG   默认 /tmp/fakeren-prestep.log
+ *   FAKEREN_SIDECAR_URL     默认 http://127.0.0.1:8741
+ *   FAKEREN_KNOWLEDGE_DIR   默认 ./.fakeren-knowledge
+ *   FAKEREN_PRESTEP_LOG     默认 /tmp/fakeren-prestep.log
+ *   FAKEREN_SCHEDULER_LOG   默认 ./.fakeren-scheduler.log
  */
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { parseLeakConfig, lastSeedsFromLog, listLedgerInstances } from "./inspect-core.mjs";
+import {
+  parseLeakConfig,
+  lastSeedsFromLog,
+  listLedgerInstances,
+  parseSchedulerLog,
+  defaultSchedulerLogPath,
+} from "./inspect-core.mjs";
 
 const SIDECAR = process.env.FAKEREN_SIDECAR_URL ?? "http://127.0.0.1:8741";
 const KNOWLEDGE_DIR = process.env.FAKEREN_KNOWLEDGE_DIR ?? "./.fakeren-knowledge";
 const PRESTEP_LOG = process.env.FAKEREN_PRESTEP_LOG ?? "/tmp/fakeren-prestep.log";
+const SCHEDULER_LOG = defaultSchedulerLogPath();
 
 async function getJSON(url) {
   try {
@@ -87,6 +96,22 @@ async function cmdState(instanceId) {
   } else {
     console.log(`prestep 日志: (无 ${PRESTEP_LOG})`);
   }
+
+  if (existsSync(SCHEDULER_LOG)) {
+    const evs = parseSchedulerLog(readFileSync(SCHEDULER_LOG, "utf8"));
+    const last = evs.length ? evs[evs.length - 1].ts : "—";
+    const kinds = evs.reduce((acc, e) => {
+      acc[e.kind] = (acc[e.kind] ?? 0) + 1;
+      return acc;
+    }, {});
+    console.log(
+      `调度日志 (${SCHEDULER_LOG}): ${evs.length} 事件 [${Object.entries(kinds)
+        .map(([k, v]) => `${k}:${v}`)
+        .join(" ")}], 最近 ${last}`,
+    );
+  } else {
+    console.log(`调度日志: (无 ${SCHEDULER_LOG})`);
+  }
 }
 
 function cmdLearned(instanceId) {
@@ -135,10 +160,44 @@ function cmdSeeds(n) {
   }
 }
 
+function cmdLog(n) {
+  console.log(`== 后台调度运行日志 (最近 ${n}) (${SCHEDULER_LOG}) ==`);
+  if (!existsSync(SCHEDULER_LOG)) {
+    console.log(`(无日志 ${SCHEDULER_LOG})`);
+    return;
+  }
+  const events = parseSchedulerLog(readFileSync(SCHEDULER_LOG, "utf8"), n);
+  if (!events.length) {
+    console.log("(日志中无调度事件)");
+    return;
+  }
+  for (const e of events) {
+    const ts = (e.ts ?? "").replace("T", " ").replace("Z", "");
+    if (e.kind === "learn") {
+      const d = e.detail ?? {};
+      console.log(`[${ts}] LEARN  ${e.instanceId}: ${d.title} (rank ${d.chosenRank})`);
+      console.log(`        ${d.selectionPath}`);
+    } else if (e.kind === "refresh") {
+      const d = e.detail ?? {};
+      console.log(`[${ts}] REFRESH ${e.instanceId}: 拉取 ${d.drewCount} 条真实感官样本`);
+    } else if (e.kind === "drift") {
+      const d = e.detail ?? {};
+      const by = d.bySource ?? {};
+      const parts = Object.entries(by)
+        .filter(([, v]) => v > 0)
+        .map(([k, v]) => `${k}:${v}`)
+        .join(" ");
+      console.log(`[${ts}] DRIFT  ${e.instanceId}: 漂出 ${d.total} 条种子 [${parts}]`);
+    } else {
+      console.log(`[${ts}] ${e.kind} ${e.instanceId}: ${JSON.stringify(e.detail ?? {})}`);
+    }
+  }
+}
+
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   if (!cmd || cmd === "help") {
-    console.log("用法: inspect.mjs <state|learned|seeds> [instanceId?] [n?]");
+    console.log("用法: inspect.mjs <state|learned|seeds|log> [instanceId?] [n?]");
     process.exit(cmd ? 0 : 1);
   }
   const n = parseInt(rest.find((a) => /^\d+$/.test(a)) ?? "", 10);
@@ -147,6 +206,7 @@ async function main() {
     if (cmd === "state") await cmdState(instanceArg);
     else if (cmd === "learned") cmdLearned(instanceArg);
     else if (cmd === "seeds") cmdSeeds(Number.isFinite(n) ? n : 20);
+    else if (cmd === "log") cmdLog(Number.isFinite(n) ? n : 50);
     else {
       console.error("未知命令:", cmd);
       process.exit(1);

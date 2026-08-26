@@ -21,6 +21,7 @@ import type { ChannelContribution, InstanceId } from "../types.js";
 import type { AmbientBuffer } from "../ambient/ambient-buffer.js";
 import type { L05Trajectory } from "../knowledge/l05-trajectory.js";
 import type { LeakConfig } from "../leak/config.js";
+import type { BackgroundTaskLog } from "../scheduler/background-log.js";
 import { loadLeakConfig } from "../leak/config.js";
 
 export type DriftState = "staged" | "gathering" | "injecting" | "cooling";
@@ -35,6 +36,7 @@ export class DriftChannel {
     private readonly ambient?: AmbientBuffer,
     private readonly l05?: L05Trajectory,
     private readonly leak: LeakConfig = loadLeakConfig(),
+    private readonly log?: BackgroundTaskLog,
   ) {}
 
   getState(): DriftState {
@@ -44,6 +46,8 @@ export class DriftChannel {
   async gather(instanceId: InstanceId, limit = 3): Promise<ChannelContribution[]> {
     this.state = "gathering";
     const out: ChannelContribution[] = [];
+    // 按源分段计数，供后台调度日志记录"漂了什么"（req_background_task_log）
+    const counts = { xd: 0, hist: 0, ambient: 0, l05: 0 };
 
     // 触发概率 (req_leak_rate_tunable): 以概率 triggerProbability 决定是否注入任何渗漏。
     if (this.leak.triggerProbability < 1 && Math.random() > this.leak.triggerProbability) {
@@ -67,6 +71,7 @@ export class DriftChannel {
           selectionPath: `crossDomain by |valence| rank ${rank + 1} (valence ${valence})`,
         },
       });
+      counts.xd++;
     });
 
     // (2) RealHistoryCursor — this instance's FULL cross-session history.
@@ -86,6 +91,7 @@ export class DriftChannel {
             selectionPath: `recent session #${idx + 1} (event ${sig.timestamp})`,
           },
         });
+        counts.hist++;
       }
     }
 
@@ -104,6 +110,7 @@ export class DriftChannel {
             selectionPath: `ambient ${a.item.sample.kind} fresh weight ${a.weight.toFixed(2)} (captured ${new Date(a.item.sample.capturedAt).toISOString()})`,
           },
         });
+        counts.ambient++;
       }
     }
 
@@ -119,11 +126,18 @@ export class DriftChannel {
           meta: s.meta,
           provenance: prov,
         });
+        counts.l05++;
       }
     }
 
     // 总条数上限 (req_leak_rate_tunable)：超过则截断（0 = 不封顶）。
     const capped = this.leak.maxSeeds > 0 ? out.slice(0, this.leak.maxSeeds) : out;
+
+    // 后台调度日志：记录"漂了什么"（req_background_task_log）。仅在真正执行了
+    // 漂移收集后落日志（被触发概率抑制的早返回不记，避免噪声）。
+    if (this.log) {
+      this.log.drift(instanceId, capped.length, { ...counts });
+    }
 
     this.state = "injecting";
     this.state = "cooling";

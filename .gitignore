@@ -23,3 +23,6 @@ ambient-control.json
 
 # L0.5 per-instance knowledge trajectory ledger (regenerated at runtime, req_l05)
 .fakeren-knowledge/
+
+# Background scheduler run log (regenerated at runtime, req_background_task_log)
+.fakeren-scheduler.log

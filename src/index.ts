@@ -31,6 +31,7 @@ import type { TaskClassifier } from "./agent/grader.js";
 import { FakerenAgent } from "./agent/fakeren-agent.js";
 import { LeakPostFilter } from "./leak/post-filter.js";
 import { loadLeakConfig } from "./leak/config.js";
+import { BackgroundTaskLog } from "./scheduler/background-log.js";
 import type { LlmClient } from "./llm/client.js";
 import { HttpLlmClient } from "./llm/client.js";
 import type { DshContext, UserMessage } from "./types.js";
@@ -75,7 +76,9 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
   const notesPath = process.env.FAKEREN_NOTES_PATH;
   if (notesPath) bus.register(new FileNotesSource(notesPath));
   // ── #45: real-sensory source (camera/mic), OFF by default (opt-in via env) ──
-  const ambientSource = new CameraMicSource();
+  // 共享的后台调度日志实例（req_background_task_log），注入到三个站点。
+  const schedulerLog = new BackgroundTaskLog();
+  const ambientSource = new CameraMicSource(undefined, schedulerLog);
   bus.register(ambientSource);
   // ── #49: background daemon — precompute the ambient cache off the critical path ──
   ambientSource.start();
@@ -99,9 +102,9 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
   // ── #51: L0.5 每日知识轨迹 (pluggable knowledge source; static default) ──
   const knowledgeDir = process.env.FAKEREN_KNOWLEDGE_DIR ?? "./.fakeren-knowledge";
   const knowledgeTracker = new DailyKnowledgeTracker(new StaticKnowledgeSource(), knowledgeDir);
-  const l05 = new L05Trajectory(knowledgeTracker);
+  const l05 = new L05Trajectory(knowledgeTracker, 7, schedulerLog);
 
-  const drift = new DriftChannel(reader, dsh, registry, ambientSource.getBuffer(), l05, loadLeakConfig());
+  const drift = new DriftChannel(reader, dsh, registry, ambientSource.getBuffer(), l05, loadLeakConfig(), schedulerLog);
   const recall = new RecallChannel(new GraphRecallSource(reader));
   const situational = new SituationalChannel();
   const agent = new FakerenAgent(classifier, drift, recall, situational, writer, consolidator, bus, dsh, new LeakPostFilter());

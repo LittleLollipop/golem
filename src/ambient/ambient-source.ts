@@ -29,6 +29,7 @@ import { AmbientBuffer } from "./ambient-buffer.js";
 import { LocalSnapshotAdapter } from "./capture-adapter.js";
 import type { AmbientCaptureAdapter, AmbientSample } from "./types.js";
 import { loadAmbientConfig, loadAmbientControl, saveAmbientControl } from "./config.js";
+import { BackgroundTaskLog, SCHEDULER_GLOBAL_INSTANCE } from "../scheduler/background-log.js";
 
 export type AmbientSourceKind = "camera" | "mic";
 
@@ -46,7 +47,7 @@ export class CameraMicSource implements SignalSource {
   private cameraOn: boolean;
   private micOn: boolean;
 
-  constructor(adapter?: AmbientCaptureAdapter) {
+  constructor(adapter?: AmbientCaptureAdapter, private readonly log?: BackgroundTaskLog) {
     this.cameraAdapter =
       adapter ?? new LocalSnapshotAdapter(this.cfg.dir, { kinds: ["image"], whitelist: this.cfg.whitelist });
     this.micAdapter =
@@ -155,6 +156,9 @@ export class CameraMicSource implements SignalSource {
     }
     this.lastRefreshMs = Date.now() - start;
     this.lastRefreshedAt = Date.now();
+    // 后台调度日志：记录"拉了多少真实样本"（req_background_task_log）。
+    // 仅在实际执行了刷新周期后落日志（被节流的早返回不算一次调度）。
+    if (this.log) this.log.refresh(SCHEDULER_GLOBAL_INSTANCE, n);
     return n;
   }
 
