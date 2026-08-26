@@ -108,13 +108,15 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
       ? new StaticKnowledgeSource()
       : new WikipediaKnowledgeSource({
           lang: process.env.FAKEREN_KNOWLEDGE_LANG ?? "zh",
-          mode:
-            (process.env.FAKEREN_KNOWLEDGE_MODE as "topics" | "random" | undefined) ?? "topics",
+          // 不设 FAKEREN_KNOWLEDGE_MODE 时，由源的 defaultMode 决定（wiki=random,
+          // 未来 news/social=top）。env 作为全局覆盖，优先级高于源默认。
+          mode: process.env.FAKEREN_KNOWLEDGE_MODE as "top" | "random" | undefined,
         });
   const knowledgeTracker = new DailyKnowledgeTracker(knowledgeSource, knowledgeDir);
   const l05 = new L05Trajectory(knowledgeTracker, 7, schedulerLog);
+  const effectiveMode = process.env.FAKEREN_KNOWLEDGE_MODE ?? knowledgeSource.defaultMode;
   console.log(
-    `[fakeren] L0.5 knowledge source = ${knowledgeBackend === "static" ? "static(curated)" : `wikipedia(${process.env.FAKEREN_KNOWLEDGE_LANG ?? "zh"}/${process.env.FAKEREN_KNOWLEDGE_MODE ?? "topics"})`}`,
+    `[fakeren] L0.5 knowledge source = ${knowledgeBackend === "static" ? "static(curated)" : `wikipedia(${process.env.FAKEREN_KNOWLEDGE_LANG ?? "zh"}/${effectiveMode})`}`,
   );
 
   const drift = new DriftChannel(reader, dsh, registry, ambientSource.getBuffer(), l05, loadLeakConfig(), schedulerLog);

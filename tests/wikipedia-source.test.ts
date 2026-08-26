@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { WikipediaKnowledgeSource } from "../src/knowledge/wikipedia-source.js";
+import { StaticKnowledgeSource } from "../src/knowledge/static-source.js";
 
 /** Minimal Response-like object — code only touches `.ok` and `.json()`. */
 function res(data: unknown, ok = true): any {
@@ -18,7 +19,7 @@ const SAMPLE_SUMMARY = (title: string, extract: string) => ({
   content_urls: { desktop: { page: `https://zh.wikipedia.org/wiki/${encodeURIComponent(title)}` } },
 });
 
-describe("WikipediaKnowledgeSource — topics mode (req_l05 live wiki)", () => {
+describe("WikipediaKnowledgeSource — top mode (req_l05 live wiki curated)", () => {
   it("fetches REAL intros live and keeps rank ascending + real citation URLs", async () => {
     const fetchImpl = mockFetch((url) => {
       if (url.includes("page/summary/")) {
@@ -27,7 +28,7 @@ describe("WikipediaKnowledgeSource — topics mode (req_l05 live wiki)", () => {
       }
       return res({});
     });
-    const src = new WikipediaKnowledgeSource({ lang: "zh", mode: "topics", fetchImpl });
+    const src = new WikipediaKnowledgeSource({ lang: "zh", mode: "top", fetchImpl });
     const c = await src.rankedCandidates();
     expect(c.length).toBe(6);
     for (let i = 1; i < c.length; i++) expect(c[i].rank).toBeGreaterThan(c[i - 1].rank);
@@ -47,7 +48,7 @@ describe("WikipediaKnowledgeSource — topics mode (req_l05 live wiki)", () => {
       }
       return res({});
     });
-    const src = new WikipediaKnowledgeSource({ mode: "topics", fetchImpl });
+    const src = new WikipediaKnowledgeSource({ mode: "top", fetchImpl });
     const c = await src.rankedCandidates();
     expect(c.length).toBe(5);
     expect(c.find((x) => x.id === "wiki-mitochondria")).toBeUndefined();
@@ -55,8 +56,33 @@ describe("WikipediaKnowledgeSource — topics mode (req_l05 live wiki)", () => {
 
   it("returns [] when every fetch fails (tracker then learns nothing that day)", async () => {
     const fetchImpl = mockFetch(() => res(null, false));
-    const src = new WikipediaKnowledgeSource({ mode: "topics", fetchImpl });
+    const src = new WikipediaKnowledgeSource({ mode: "top", fetchImpl });
     expect(await src.rankedCandidates()).toEqual([]);
+  });
+});
+
+describe("WikipediaKnowledgeSource — default mode is random (dec_knowledge_mode_policy)", () => {
+  it("when no mode is given, defaults to random endless discovery", async () => {
+    const fetchImpl = mockFetch((url) => {
+      if (url.includes("list=random")) {
+        return res({ query: { random: [{ title: "量子纠缠" }] } });
+      }
+      if (url.includes("page/summary/")) {
+        const t = decodeURIComponent(url.split("page/summary/")[1]);
+        return res(SAMPLE_SUMMARY(t, `${t} 的随机摘要。`));
+      }
+      return res({});
+    });
+    const src = new WikipediaKnowledgeSource({ fetchImpl }); // no mode → random
+    expect(src.defaultMode).toBe("random");
+    const c = await src.rankedCandidates();
+    expect(c).toHaveLength(1);
+    expect(c[0].id).toBe("wiki-量子纠缠");
+    expect(c[0].summary).toContain("随机摘要");
+  });
+
+  it("StaticKnowledgeSource defaults to top (curated)", () => {
+    expect(new StaticKnowledgeSource().defaultMode).toBe("top");
   });
 });
 

@@ -11,11 +11,12 @@
  *     one ("top1 学过则 top2"), records selectionPath, dedups by id.
  *
  * Two modes:
- *   - "topics" (default): fetch the curated ranked topic list live. Preserves the
+ *   - "top": fetch the curated ranked topic list live. Preserves the
  *     top1→top2 selection narrative and per-instance dedup. After all topics are
  *     learned, returns [] (no more learning until the list grows).
- *   - "random": pick a random Wikipedia article each call (endless discovery);
- *     dedup still applies via id = `wiki-<normalizedTitle>`.
+ *   - "random" (default): pick a random Wikipedia article each call (endless
+ *     discovery); dedup still applies via id = `wiki-<normalizedTitle>`.
+ *     Per dec_knowledge_mode_policy, wiki defaults to random (news/social → top).
  *
  * Resilience: any fetch failure (network/timeout/non-200/disambiguation) is
  * skipped — the tracker then falls through to the next candidate, or returns
@@ -36,9 +37,9 @@ export interface WikiTopic {
 export interface WikipediaSourceConfig {
   /** Wikipedia language edition, e.g. "zh" | "en". Default "zh". */
   lang?: string;
-  /** "topics" (curated, ranked) or "random" (endless). Default "topics". */
-  mode?: "topics" | "random";
-  /** curated topic list for mode "topics". */
+  /** "top" (curated, ranked) or "random" (endless). Default "random". */
+  mode?: "top" | "random";
+  /** curated topic list for mode "top". */
   topics?: WikiTopic[];
   /** per-request timeout. Default 8000ms. */
   timeoutMs?: number;
@@ -65,8 +66,10 @@ interface RestSummary {
 }
 
 export class WikipediaKnowledgeSource implements KnowledgeSource {
+  /** Default selection mode: wiki → random (endless discovery). */
+  readonly defaultMode = "random" as const;
   private readonly lang: string;
-  private readonly mode: "topics" | "random";
+  private readonly mode: "top" | "random";
   private readonly topics: WikiTopic[];
   private readonly timeoutMs: number;
   private readonly cacheTtlMs: number;
@@ -75,7 +78,7 @@ export class WikipediaKnowledgeSource implements KnowledgeSource {
 
   constructor(config: WikipediaSourceConfig = {}) {
     this.lang = config.lang ?? "zh";
-    this.mode = config.mode ?? "topics";
+    this.mode = config.mode ?? this.defaultMode;
     this.topics = config.topics ?? DEFAULT_TOPICS;
     this.timeoutMs = config.timeoutMs ?? 8000;
     this.cacheTtlMs = config.cacheTtlMs ?? 6 * 3600 * 1000;

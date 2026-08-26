@@ -21,7 +21,20 @@ export interface KnowledgeCandidate {
   rank: number;
 }
 
+export type KnowledgeMode = "top" | "random";
+
 export interface KnowledgeSource {
+  /**
+   * Per-source default selection mode:
+   *   - "top"    = curated / ranked / trending (the source's editorially-chosen
+   *                top items; for wiki the 6 ranked topics, for news the top
+   *                headlines, for social the trending feed).
+   *   - "random" = endless discovery (a random item each call).
+   * A global FAKEREN_KNOWLEDGE_MODE env can override this; when unset, the
+   * source's defaultMode applies. Convention (dec_knowledge_mode_policy):
+   * wiki → random, news/social → top.
+   */
+  readonly defaultMode: KnowledgeMode;
   /** Ranked, real facts (Google/Wiki-style ranking). Stable, ascending by rank. */
   rankedCandidates(): Promise<KnowledgeCandidate[]>;
 }

@@ -65,6 +65,8 @@ const FACTS: KnowledgeCandidate[] = [
 ];
 
 export class StaticKnowledgeSource implements KnowledgeSource {
+  /** Curated, ranked facts → "top" mode. */
+  readonly defaultMode = "top" as const;
   async rankedCandidates(): Promise<KnowledgeCandidate[]> {
     return FACTS.slice().sort((a, b) => a.rank - b.rank);
   }
