@@ -24,6 +24,9 @@ import { LocalClockSource, FileNotesSource } from "./bus/sources.js";
 import { CameraMicSource } from "./ambient/ambient-source.js";
 import { StaticKnowledgeSource } from "./knowledge/static-source.js";
 import { WikipediaKnowledgeSource } from "./knowledge/wikipedia-source.js";
+import { NewsRssKnowledgeSource } from "./knowledge/news-rss-source.js";
+import { SocialTrendingKnowledgeSource } from "./knowledge/social-trending-source.js";
+import type { KnowledgeMode, KnowledgeSource } from "./knowledge/types.js";
 import { DailyKnowledgeTracker } from "./knowledge/daily-tracker.js";
 import { L05Trajectory } from "./knowledge/l05-trajectory.js";
 import { Grader } from "./agent/grader.js";
@@ -100,24 +103,25 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
   );
   const classifier: TaskClassifier = llm ? new LlmGrader(llm) : new Grader();
 
-  // ── #51: L0.5 每日知识轨迹 (live Wikipedia source; static available via env) ──
+  // ── #51: L0.5 每日知识轨迹 (pluggable live sources; static available via env) ──
   const knowledgeDir = process.env.FAKEREN_KNOWLEDGE_DIR ?? "./.fakeren-knowledge";
   const knowledgeBackend = (process.env.FAKEREN_KNOWLEDGE_SOURCE ?? "wikipedia").toLowerCase();
-  const knowledgeSource =
+  const knowledgeLang = process.env.FAKEREN_KNOWLEDGE_LANG ?? "zh";
+  // 全局模式覆盖；不设时各源用自己的 defaultMode（wiki=random, news/social=top）。
+  const modeOverride = process.env.FAKEREN_KNOWLEDGE_MODE as KnowledgeMode | undefined;
+  const knowledgeSource: KnowledgeSource =
     knowledgeBackend === "static"
       ? new StaticKnowledgeSource()
-      : new WikipediaKnowledgeSource({
-          lang: process.env.FAKEREN_KNOWLEDGE_LANG ?? "zh",
-          // 不设 FAKEREN_KNOWLEDGE_MODE 时，由源的 defaultMode 决定（wiki=random,
-          // 未来 news/social=top）。env 作为全局覆盖，优先级高于源默认。
-          mode: process.env.FAKEREN_KNOWLEDGE_MODE as "top" | "random" | undefined,
-        });
+      : knowledgeBackend === "news" || knowledgeBackend === "news-rss"
+      ? new NewsRssKnowledgeSource({ lang: knowledgeLang, mode: modeOverride })
+      : knowledgeBackend === "social" || knowledgeBackend === "social-hn"
+      ? new SocialTrendingKnowledgeSource({ mode: modeOverride })
+      : new WikipediaKnowledgeSource({ lang: knowledgeLang, mode: modeOverride });
   const knowledgeTracker = new DailyKnowledgeTracker(knowledgeSource, knowledgeDir);
   const l05 = new L05Trajectory(knowledgeTracker, 7, schedulerLog);
   const effectiveMode = process.env.FAKEREN_KNOWLEDGE_MODE ?? knowledgeSource.defaultMode;
-  console.log(
-    `[fakeren] L0.5 knowledge source = ${knowledgeBackend === "static" ? "static(curated)" : `wikipedia(${process.env.FAKEREN_KNOWLEDGE_LANG ?? "zh"}/${effectiveMode})`}`,
-  );
+  const backendLabel = knowledgeBackend === "wikipedia" ? `wikipedia(${knowledgeLang})` : knowledgeBackend;
+  console.log(`[fakeren] L0.5 knowledge source = ${backendLabel}/${effectiveMode}`);
 
   const drift = new DriftChannel(reader, dsh, registry, ambientSource.getBuffer(), l05, loadLeakConfig(), schedulerLog);
   const recall = new RecallChannel(new GraphRecallSource(reader));
