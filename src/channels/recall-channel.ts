@@ -54,15 +54,27 @@ export class RecallChannel {
 
   async gather(userText: string, instanceId: InstanceId, limit = 3): Promise<ChannelContribution[]> {
     const nodes = await this.source.recall(instanceId, toKeywords(userText), limit * 4);
-    return nodes.slice(0, limit).map((n, i) => ({
-      channel: "recall" as const,
-      content: `[图检索] ${n.label}`,
-      seedId: `recall_${n.id}_${i}`,
-      valence: typeof n.valence === "number" ? n.valence : 0,
-      provenance: {
-        source: `node:${n.id}`,
-        selectionPath: `recall keyword match rank ${i + 1}`,
-      },
-    }));
+    return nodes.slice(0, limit).map((n, i) => {
+      // Surface the remembered reply, not just the question label. Prefer the
+      // extractive summary (props.assistantSummary); fall back to the raw reply
+      // for older nodes that predate summarization.
+      const summary =
+        typeof n.props?.assistantSummary === "string" && n.props.assistantSummary.trim().length > 0
+          ? n.props.assistantSummary
+          : typeof n.props?.assistantText === "string"
+            ? n.props.assistantText
+            : "";
+      const summaryLine = summary ? `\n  ↳ ${summary}` : "";
+      return {
+        channel: "recall" as const,
+        content: `[图检索] ${n.label}${summaryLine}`,
+        seedId: `recall_${n.id}_${i}`,
+        valence: typeof n.valence === "number" ? n.valence : 0,
+        provenance: {
+          source: `node:${n.id}`,
+          selectionPath: `recall keyword match rank ${i + 1}`,
+        },
+      };
+    });
   }
 }

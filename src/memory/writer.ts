@@ -8,6 +8,7 @@
  */
 
 import type { GraphStore } from "./graph-store.js";
+import { summarizeReply } from "./summarize.js";
 import type {
   GraphNode,
   GraphEdge,
@@ -85,7 +86,13 @@ export class HeuristicExtractor implements Extractor {
       id: eventId,
       type: "Event",
       label: input.userText.slice(0, 80),
-      props: { userText: input.userText, assistantText: input.assistantText },
+      props: {
+        userText: input.userText,
+        assistantText: input.assistantText,
+        // Deterministic extractive summary so recall can surface the reply
+        // without dumping the raw wall of text (no LLM, observable).
+        assistantSummary: summarizeReply(input.assistantText ?? "", input.userText),
+      },
     });
 
     const spans = new Set<string>();
