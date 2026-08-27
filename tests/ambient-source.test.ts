@@ -55,7 +55,7 @@ function makeWav(durationMs: number): Buffer {
 
 let tmpdir: string;
 beforeEach(() => {
-  tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "fakeren-ambient-"));
+  tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "golem-ambient-"));
 });
 afterEach(() => {
   fs.rmSync(tmpdir, { recursive: true, force: true });

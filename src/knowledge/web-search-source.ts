@@ -83,7 +83,7 @@ export class WebSearchKnowledgeSource implements KnowledgeSource {
     this.mode = config.mode ?? "top";
     this.timeoutMs = config.timeoutMs ?? 8000;
     this.maxResults = config.maxResults ?? 5;
-    this.userAgent = config.userAgent ?? "fakeren/0.1 (https://github.com/LittleLollipop; local)";
+    this.userAgent = config.userAgent ?? "golem/0.1 (https://github.com/LittleLollipop; local)";
     this.fetchImpl = config.fetchImpl ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
   }
 

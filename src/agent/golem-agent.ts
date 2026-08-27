@@ -1,5 +1,5 @@
 /**
- * FakerenAgent — assembles per-turn context from the three separated channels,
+ * GolemAgent — assembles per-turn context from the three separated channels,
  * and runs idle maintenance (consolidation + situational re-perception + memory
  * sync from the RealHistoryCursor).
  *
@@ -26,7 +26,7 @@ import type { DshAdapter } from "../adapter/dsh-seams.js";
 import type { LeakPostFilter, PostFilterAction } from "../leak/post-filter.js";
 import { stampInjection } from "./provenance.js";
 
-export class FakerenAgent {
+export class GolemAgent {
   constructor(
     private readonly classifier: TaskClassifier,
     private readonly drift: DriftChannel,

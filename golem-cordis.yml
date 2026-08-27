@@ -1,0 +1,7 @@
+# Patch overlay to load the golem plugin into a dsh web composition.
+# Usage: pnpm dsh web --patch golem-cordis.yml --no-open
+# `golem` resolves via the symlink at node_modules/golem -> /Users/sai/WorkBuddy/dev/golem.
+
+- insert:
+    - id: golem
+      name: 'golem'

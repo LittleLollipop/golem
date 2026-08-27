@@ -20,7 +20,7 @@ function makeClock(start = new Date("2026-08-25T09:00:00")) {
 
 let tmpdir: string;
 beforeEach(() => {
-  tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "fakeren-l05-"));
+  tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "golem-l05-"));
 });
 afterEach(() => {
   fs.rmSync(tmpdir, { recursive: true, force: true });

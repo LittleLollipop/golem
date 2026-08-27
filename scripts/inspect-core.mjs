@@ -27,10 +27,10 @@ export function parseLeakConfig(env = process.env) {
 
 /**
  * Parse one pre-step audit line produced by dsh-seams.ts (#55 provenance logging):
- *   [fakeren:pre-step]   seed <id> [<channel>] src=<source> path="<selectionPath>" at=<iso>
+ *   [golem:pre-step]   seed <id> [<channel>] src=<source> path="<selectionPath>" at=<iso>
  * Returns null for non-seed lines so callers can filter the whole log safely.
  */
-const SEED_RE = /^\[fakeren:pre-step\]   seed (.+) \[(\w+)\] src=(.+) path="(.+)" at=(.+)$/;
+const SEED_RE = /^\[golem:pre-step\]   seed (.+) \[(\w+)\] src=(.+) path="(.+)" at=(.+)$/;
 
 export function parseSeedLine(line) {
   const m = SEED_RE.exec(line ?? "");

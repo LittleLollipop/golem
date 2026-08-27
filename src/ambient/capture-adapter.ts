@@ -224,7 +224,7 @@ export class NativeMediaAdapter implements AmbientCaptureAdapter {
 
     // camera: imagesnap -w 1 <tmp>.jpg
     if (which("imagesnap")) {
-      const jpg = path.join(os.tmpdir(), `fakeren-cam-${stamp}.jpg`);
+      const jpg = path.join(os.tmpdir(), `golem-cam-${stamp}.jpg`);
       const r = spawnSync("imagesnap", ["-w", "1", jpg], { timeout: 8000 });
       if (r.status === 0 && fs.existsSync(jpg)) {
         out.push(extractFeatures(jpg, stamp));
@@ -232,7 +232,7 @@ export class NativeMediaAdapter implements AmbientCaptureAdapter {
     }
     // mic: ffmpeg -f avfoundation -i ":0" -t 1 <tmp>.wav
     if (which("ffmpeg")) {
-      const wav = path.join(os.tmpdir(), `fakeren-mic-${stamp}.wav`);
+      const wav = path.join(os.tmpdir(), `golem-mic-${stamp}.wav`);
       const r = spawnSync("ffmpeg", ["-y", "-f", "avfoundation", "-i", ":0", "-t", "1", wav], {
         timeout: 8000,
         stdio: "ignore",

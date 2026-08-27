@@ -134,7 +134,7 @@ export class NewsRssKnowledgeSource implements KnowledgeSource {
     this.feeds = config.feeds ?? DEFAULT_FEEDS[this.lang] ?? DEFAULT_FEEDS.en;
     this.timeoutMs = config.timeoutMs ?? 8000;
     this.maxPerFeed = config.maxPerFeed ?? 10;
-    this.userAgent = config.userAgent ?? "fakeren/0.1 (https://github.com/LittleLollipop; local)";
+    this.userAgent = config.userAgent ?? "golem/0.1 (https://github.com/LittleLollipop; local)";
     this.fetchImpl = config.fetchImpl ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
     this.parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
   }

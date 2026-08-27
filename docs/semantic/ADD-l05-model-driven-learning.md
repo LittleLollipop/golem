@@ -217,7 +217,7 @@ new L05Trajectory(knowledgeTracker, 7, schedulerLog, llm, reader);
   - random：`选随机 (rank ${rank}, 来源 ${source})` → 通常 `learned`
   - purposeful：`模型规划: ${directive.rationale} (source=${source}, query=${query??"-"})` → 据实 `learned/empty/junk/error`
 - **状态即信息**：`empty`/`junk`/`error` 也落盘并写入 `schedulerLog.learn`（带 `status` + `statusNote`），便于审计「今天目的轨为什么没学到东西」——这是设计要捕捉的元数据，而非失败。
-- 启动日志：`[fakeren] L0.5 = dual-track (random: wikipedia/random + purposeful: <有 LLM 时 model-planned[wiki/news/social/web] / 无 LLM 时 no-LLM → 记 empty 状态>)`。无 LLM 时目的轨每 idle 稳定记一条 `empty`（不兜底、不调源），随机轨照常 serendipity。
+- 启动日志：`[golem] L0.5 = dual-track (random: wikipedia/random + purposeful: <有 LLM 时 model-planned[wiki/news/social/web] / 无 LLM 时 no-LLM → 记 empty 状态>)`。无 LLM 时目的轨每 idle 稳定记一条 `empty`（不兜底、不调源），随机轨照常 serendipity。
 
 ---
 

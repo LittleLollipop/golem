@@ -69,7 +69,7 @@ function toText(content: unknown): string {
  * from the memory graph structurally.
  *
  * Seed provenance (id/source/selectionPath/injectedAt) is intentionally NOT
- * placed here: it belongs to fakeren's own audit trail (the pre-step log,
+ * placed here: it belongs to golem's own audit trail (the pre-step log,
  * #55, and the scheduler log, #58), and embedding a nested object array into a
  * dsh-persisted `source` triggers "non-JSON-serializable data" when the host
  * dsh runtime serializes the `user/message` session event.
@@ -114,7 +114,7 @@ export class DshAdapter {
         if (!loggedSessionShape && sess) {
           loggedSessionShape = true;
           pLog(
-            `[fakeren:pre-step] DEBUG agent.session keys=${JSON.stringify(Object.keys(sess))} id=${JSON.stringify(sess?.id)}`,
+            `[golem:pre-step] DEBUG agent.session keys=${JSON.stringify(Object.keys(sess))} id=${JSON.stringify(sess?.id)}`,
           );
         }
       }
@@ -124,7 +124,7 @@ export class DshAdapter {
         role: "user" as const,
         content: toText(m?.content),
       }));
-      pLog(`[fakeren:pre-step] enter session=${sessionId} claimed=${claimed.length}`);
+      pLog(`[golem:pre-step] enter session=${sessionId} claimed=${claimed.length}`);
 
       // The assemble fn touches the axolotl sidecar (registry/recall/drift).
       // If the sidecar is down it throws — never let that crash the dsh process.
@@ -133,7 +133,7 @@ export class DshAdapter {
         augmented = await fn({ sessionId, claimed });
       } catch (err) {
         pLog(
-          `[fakeren:pre-step] WARNING: assemble threw, injecting nothing (agent still runs): ${String(err)}`,
+          `[golem:pre-step] WARNING: assemble threw, injecting nothing (agent still runs): ${String(err)}`,
         );
       }
 
@@ -154,10 +154,10 @@ export class DshAdapter {
         if (personaBlock && sessionId && !personaSeen.has(sessionId)) {
           personaSeen.add(sessionId);
           personaMsg.push(fakerenUserMessage(personaBlock.content, "persona"));
-          pLog(`[fakeren:pre-step] persona injected for session=${sessionId}`);
+          pLog(`[golem:pre-step] persona injected for session=${sessionId}`);
         }
       } catch (err) {
-        pLog(`[fakeren:pre-step] WARNING: persona createUserMessage threw: ${String(err)}`);
+        pLog(`[golem:pre-step] WARNING: persona createUserMessage threw: ${String(err)}`);
       }
       let leaked: unknown[] = [];
       try {
@@ -165,19 +165,19 @@ export class DshAdapter {
           .filter((m) => m.meta && (m.meta as any).channel === "assembled")
           .map((m) => fakerenUserMessage(m.content, "subconscious"));
       } catch (err) {
-        pLog(`[fakeren:pre-step] WARNING: createUserMessage threw: ${String(err)}`);
+        pLog(`[golem:pre-step] WARNING: createUserMessage threw: ${String(err)}`);
       }
-      pLog(`[fakeren:pre-step] exit leaked=${leaked.length}`);
+      pLog(`[golem:pre-step] exit leaked=${leaked.length}`);
       for (const m of augmented) {
         if (m.meta && (m.meta as any).channel === "assembled") {
-          pLog(`[fakeren:pre-step] LEAK BLOCK >>>\n${m.content}\n<<< LEAK BLOCK`);
+          pLog(`[golem:pre-step] LEAK BLOCK >>>\n${m.content}\n<<< LEAK BLOCK`);
           const seeds = (m.meta as any).seeds as any[] | undefined;
           if (Array.isArray(seeds)) {
             for (const s of seeds) {
               const p = s.provenance;
               if (p) {
                 pLog(
-                  `[fakeren:pre-step]   seed ${s.id} [${s.channel}] src=${p.source} path="${p.selectionPath}" at=${p.injectedAt ?? "?"}`,
+                  `[golem:pre-step]   seed ${s.id} [${s.channel}] src=${p.source} path="${p.selectionPath}" at=${p.injectedAt ?? "?"}`,
                 );
               }
             }
@@ -213,7 +213,7 @@ export class DshAdapter {
    * RealHistoryCursor. dsh's `sessionPersistence.load(id)` returns a
    * `SessionInspection` ({ meta, events }) — NOT a raw event array. We unwrap
    * `.events` and normalize each dsh `SessionEvent` ({ type: "user/message" |
-   * "assistant/message", data, time }) into fakeren's `RawSessionEvent`
+   * "assistant/message", data, time }) into golem's `RawSessionEvent`
    * ({ type: "user" | "assistant", timestamp, payload: { text } }), which is
    * what drift/syncLatestTurn consume.
    *
@@ -245,7 +245,7 @@ export class DshAdapter {
           : (data as any)?.message?.content;
       const text = toText(raw);
       if (text.length === 0) continue;
-      // TODO#28: a message fakeren synthesized (persona / leak) carries
+      // TODO#28: a message golem synthesized (persona / leak) carries
       // `source.fakeren` in its dsh source tag. Surface that as `injected` so
       // syncLatestTurn can exclude it from the memory graph structurally
       // (no string-prefix matching).

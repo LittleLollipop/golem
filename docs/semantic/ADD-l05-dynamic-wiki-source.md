@@ -21,7 +21,7 @@
 - **跨源模式策略（dec_knowledge_mode_policy）**：`KnowledgeSource` 契约新增每源自带的 `defaultMode`；`FAKEREN_KNOWLEDGE_MODE` 作为全局覆盖，不设时各源用自己的默认。
   - **wiki → `random`**（无尽发现，用户明确："wiki这块可以 random"）。
   - **news / social（未来） → `top`**（各源的精选/热门/头条，用户明确："新闻和社交媒体需要top"）。
-- 启动打印当前后端：`[fakeren] L0.5 knowledge source = wikipedia(zh/random)`。
+- 启动打印当前后端：`[golem] L0.5 knowledge source = wikipedia(zh/random)`。
 - `DailyKnowledgeTracker` / `L05Trajectory` / `seedCandidates` **一行未改**——印证 `KnowledgeSource` 契约稳定。
 
 ## 预期行为（已端到端验证）

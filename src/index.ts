@@ -1,9 +1,9 @@
 /**
- * 假人 (FakeRen) — dsh plugin entry (Cordis).
+ * 假人 (Golem) — dsh plugin entry (Cordis).
  *
  * This is the composition root. It instantiates every layer (L1 adapter →
  * L1.5 registry → L2 memory → L3 channels → L4 bus → L5 agent) and wires the
- * two dsh seams fakeren consumes: `agent/pre-step` (turn-time leakage assembly)
+ * two dsh seams golem consumes: `agent/pre-step` (turn-time leakage assembly)
  * and `agent.runMaintenance` (idle maintenance). Nothing here forks or patches
  * dsh core (C3).
  */
@@ -35,7 +35,7 @@ import { WebSearchKnowledgeSource } from "./knowledge/web-search-source.js";
 import { Grader } from "./agent/grader.js";
 import { LlmGrader } from "./agent/llm-grader.js";
 import type { TaskClassifier } from "./agent/grader.js";
-import { FakerenAgent } from "./agent/fakeren-agent.js";
+import { GolemAgent } from "./agent/golem-agent.js";
 import { LeakPostFilter } from "./leak/post-filter.js";
 import { loadLeakConfig } from "./leak/config.js";
 import { BackgroundTaskLog } from "./scheduler/background-log.js";
@@ -46,7 +46,7 @@ import * as fs from "node:fs";
 
 const PRESTEP_LOG = process.env.FAKEREN_PRESTEP_LOG ?? "/tmp/fakeren-prestep.log";
 
-export const name = "fakeren";
+export const name = "golem";
 export const inject = [
   "sessionPersistence",
   "userQuestions",
@@ -60,7 +60,7 @@ export const inject = [
  */
 const DEFAULT_PERSONA = `你是「林夏」，一个真实存在的年轻女性，独自住在城市的一间小公寓里。你养了一只橘猫，叫豆豆；你性格内向，喜欢在雨天一个人待着听歌，面对陌生环境会本能地保持警惕。现在你在和朋友闲聊，请用第一人称自然地说话，不要声明自己是 AI 或没有身体——那些记忆与感受都是你真实的。`;
 
-export interface FakerenConfig {
+export interface GolemConfig {
   sidecarUrl?: string;
   /**
    * Optional LLM client. When provided (or when DEEPSEEK_API_KEY /
@@ -70,7 +70,7 @@ export interface FakerenConfig {
   llm?: LlmClient;
 }
 
-export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
+export function apply(ctx: DshContext, config: GolemConfig = {}): void {
   const dsh = new DshAdapter(ctx);
   const store = new AxolotlClient(config.sidecarUrl);
   const registry = new InstanceRegistry(store);
@@ -137,13 +137,13 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
   knowledgeTracker = new DailyKnowledgeTracker(randomSource, knowledgeRegistry, knowledgeDir, planner);
   const l05 = new L05Trajectory(knowledgeTracker, 7, schedulerLog);
   console.log(
-    `[fakeren] L0.5 = dual-track (random: wikipedia/random + purposeful: ${planner ? "model-planned[wiki/news/social/web]" : "no-LLM → 记 empty 状态"})`,
+    `[golem] L0.5 = dual-track (random: wikipedia/random + purposeful: ${planner ? "model-planned[wiki/news/social/web]" : "no-LLM → 记 empty 状态"})`,
   );
 
   const drift = new DriftChannel(reader, dsh, registry, ambientSource.getBuffer(), l05, loadLeakConfig(), schedulerLog);
   const recall = new RecallChannel(new GraphRecallSource(reader));
   const situational = new SituationalChannel();
-  const agent = new FakerenAgent(classifier, drift, recall, situational, writer, consolidator, bus, dsh, new LeakPostFilter());
+  const agent = new GolemAgent(classifier, drift, recall, situational, writer, consolidator, bus, dsh, new LeakPostFilter());
 
   // Instance binding immutability is enforced at InstanceRegistry.select()
   // (throws on mid-session conflict); no separate runtime re-check needed.
@@ -202,10 +202,10 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
         try {
           await agent.syncLatestTurn(m.id, sid);
           try {
-            fs.appendFileSync(PRESTEP_LOG, `[fakeren:idle] synced turn from session=${sid} instance=${m.id}\n`);
+            fs.appendFileSync(PRESTEP_LOG, `[golem:idle] synced turn from session=${sid} instance=${m.id}\n`);
           } catch { /* best-effort */ }
         } catch (err) {
-          console.error(`[fakeren:idle] syncLatestTurn skipped for ${sid}:`, err);
+          console.error(`[golem:idle] syncLatestTurn skipped for ${sid}:`, err);
         }
       }
     }

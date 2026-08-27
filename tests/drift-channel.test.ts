@@ -46,7 +46,7 @@ describe("DriftChannel ambient integration (req_ambient_decay_stream)", () => {
 
 describe("DriftChannel L0.5 knowledge trajectory (req_l05_knowledge_trajectory)", () => {
   it("surfaces recent learned facts as [知识轨迹] drift seeds with citation meta", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fakeren-l05-int-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "golem-l05-int-"));
     const tr = new DailyKnowledgeTracker(
       new StaticKnowledgeSource(),
       new KnowledgeSourceRegistry({ static: new StaticKnowledgeSource() }, "static"),

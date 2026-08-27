@@ -70,7 +70,7 @@ ctx.on('agent/pre-step', async ({ agent, turn }, next) => {
   if (decision.kind === 'enter') {
     return { kind: 'enter', messages: [...decision.messages, createUserMessage({
       content: [{ type: 'text', text: '<seed>' }],
-      source: { kind: 'plugin', plugin: 'fakeren-ambient' },   // ← 来源标签
+      source: { kind: 'plugin', plugin: 'golem-ambient' },   // ← 来源标签
     })] }
   }
   return decision
@@ -125,7 +125,7 @@ ctx.on('agent/pre-step', async ({ agent, turn }, next) => {
 > **Model-visible means logged.** Anything that reaches a model request must be reconstructable from the log, and **a runtime invariant asserts it**. This is why a new model-visible input requires a new session event.
 > —— `docs/architecture.md#session-log`
 
-含义：**我们不可能偷偷注入**。任何进到模型的 ambient 种子都必然落成一条带 `source: { kind:'plugin', plugin:'fakeren-...' }` 的持久事件。`req_seed_provenance`（每条种子记来源与选择路径）从"我们要努力实现的需求"降级成"底座强制执行的事实"。
+含义：**我们不可能偷偷注入**。任何进到模型的 ambient 种子都必然落成一条带 `source: { kind:'plugin', plugin:'golem-...' }` 的持久事件。`req_seed_provenance`（每条种子记来源与选择路径）从"我们要努力实现的需求"降级成"底座强制执行的事实"。
 
 ### 3.2 `ctx.invariants` —— 可把"禁编造"做成会抛错的机器校验
 

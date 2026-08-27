@@ -30,7 +30,7 @@
 ### 接入 `src/index.ts`
 - `FAKEREN_KNOWLEDGE_SOURCE` 扩展：`static | wikipedia(默认) | news | news-rss | social | social-hn`。
 - `FAKEREN_KNOWLEDGE_MODE`（top/random）作为全局覆盖，不设时各源用自己的 `defaultMode`。
-- 启动日志：`[fakeren] L0.5 knowledge source = <backend>/<effectiveMode>`。
+- 启动日志：`[golem] L0.5 knowledge source = <backend>/<effectiveMode>`。
 
 ## 验证（真数据 + 测试）
 - 真实联网冒烟：新闻取到 BBC 中文 10 条实时头条 + 真 URL；社媒取到 HN 30 条热榜（含分数/评论/作者）。

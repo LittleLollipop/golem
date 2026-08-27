@@ -39,7 +39,7 @@ export class InstanceRegistry {
     return this.readInstances();
   }
 
-  /** Read one instance's metadata (维度 I: multi-fakeren persona lookup). */
+  /** Read one instance's metadata (维度 I: multi-golem persona lookup). */
   async meta(id: InstanceId): Promise<InstanceMeta | null> {
     return await this.store.getMeta(id);
   }

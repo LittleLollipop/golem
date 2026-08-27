@@ -1,7 +1,7 @@
 /**
- * LlmClient — the seam that lets fakeren reuse "the agent's own model"
+ * LlmClient — the seam that lets golem reuse "the agent's own model"
  * (req_memory_auto_extract: 无第二模型). This is intentionally DECOUPLED from
- * dsh: fakeren's only dsh touchpoint is adapter/dsh-seams.ts (C3), and we don't
+ * dsh: golem's only dsh touchpoint is adapter/dsh-seams.ts (C3), and we don't
  * fork dsh's internal llm package. Instead we talk OpenAI-compatible
  * chat-completions directly (DeepSeek by default — the same family the agent
  * uses), so the core stays testable and the host model is swappable.

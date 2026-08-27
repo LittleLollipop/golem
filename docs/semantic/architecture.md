@@ -25,10 +25,10 @@
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │ L5  表达层 (Expression)                                            │
-│     fakeren-precompose · persona profile · 后筛(userQuestions)      │
+│     golem-precompose · persona profile · 后筛(userQuestions)      │
 ├──────────────────────────────────────────────────────────────────┤
 │ L4  感知总线 (Signal Bus) — 模态不可知                              │
-│     fakeren-signal-bus · 信号源插件(Definition/Provider/Consumer)   │
+│     golem-signal-bus · 信号源插件(Definition/Provider/Consumer)   │
 ├──────────────────────────────────────────────────────────────────┤
 │ L3  认知层 (Cognition) — 三通道 + 记忆读写 + 分级器                  │
 │  ┌─────────┐ ┌──────────┐ ┌────────────┐ ┌────────┐ ┌──────────┐  │
@@ -36,13 +36,13 @@
 │  └─────────┘ └──────────┘ └────────────┘ └────────┘ └──────────┘  │
 ├──────────────────────────────────────────────────────────────────┤
 │ L2  记忆基座 (Memory Substrate) — 维度 H，axolotl_rs 唯一           │
-│     fakeren-memory: Writer / Reader / Consolidator / GraphSchema   │
+│     golem-memory: Writer / Reader / Consolidator / GraphSchema   │
 ├──────────────────────────────────────────────────────────────────┤
 │ L1.5 实例管理层 (Instance Plane) — 假人隔离边界(D5)                 │
-│     fakeren-registry: 配置页(新建/列出) · 会话开始选定 · 中途不可切换 │
+│     golem-registry: 配置页(新建/列出) · 会话开始选定 · 中途不可切换 │
 ├──────────────────────────────────────────────────────────────────┤
 │ L1  薄适配层 (Adapter, C3) — 只包 dsh 文档化 seam                   │
-│     fakeren-adapter: preStep / idle / invariant / askUser / persist│
+│     golem-adapter: preStep / idle / invariant / askUser / persist│
 ├──────────────────────────────────────────────────────────────────┤
 │ L0  上游基座 — dsh @ b150a55（锁 commit，不 fork/不 patch 核心）    │
 └──────────────────────────────────────────────────────────────────┘
@@ -60,7 +60,7 @@
 
 所有认知/表达/感知模块以 **dsh peer 插件**（Cordis Seam）形态接入（`req_dsh_peer_plugin`），非编码 profile 复用 runtime 骨架、弃 terminal/editor 工具（`req_noncoding_profile`）。
 
-### L1 · `fakeren-adapter`（薄适配层，C3）
+### L1 · `golem-adapter`（薄适配层，C3）
 唯一 import dsh 的模块。暴露：
 - `onPreStep(handler)` → 包 `agent/pre-step` waterfall（base-analysis §2.1）
 - `runIdle(task)` → 包 `agent.runMaintenance`（`req_async_precompute`，不进主回合关键路径）
@@ -68,38 +68,38 @@
 - `askUser(q)` → 包 `ctx.userQuestions.ask()`（`req_leak_postfilter_dynamic` 后筛）
 - `persist(domain,key,val)` / `load(domain,key)` → 包 `ctx.storageDomain`（H2：学习进度持久化，跨重启重算 due）
 
-### L1.5 · `fakeren-registry`（实例管理层，D5）
+### L1.5 · `golem-registry`（实例管理层，D5）
 - 假人注册表：每个假人 = 独立 axolotl_rs 命名空间 + 独立学习进度 / 种子池（`req_iso_namespace` `req_iso_learning_scoped`）。
 - 配置 / 管理面：新建假人、列出现有假人（`req_iso_config_page`，C3 下为独立轻量 UI，不 patch dsh 核心）。
 - 会话绑定：会话开始时选定 `instanceId`（默认上次使用，或首轮 `askUser` 选择）；绑定后由不变量拒绝变更（`req_iso_session_select` `req_iso_no_mid_switch`）。
 
-### L2 · `fakeren-memory`（记忆基座，维度 H，D1）
+### L2 · `golem-memory`（记忆基座，维度 H，D1）
 包 axolotl_rs。子组件见 §6。对 L3 暴露：`MemoryWriter`（写）、`MemoryReader`（读/recall）、`Consolidator`（巩固）。**这是 D1 的唯一记忆落地**。
 
 ### L3 · 三通道
 | 模块 | 职责 | 主满足 req | 源标签 |
 |---|---|---|---|
-| `fakeren-drift` | L0/L0.5 漂移：从真实史游标 + 记忆图采样种子，AI 自身情绪加权（D2），注入 ambient | `req_l0_real_history_drift` `req_l05_knowledge_trajectory` `req_l0_emotion_coupling` | `fakeren-drift` |
-| `fakeren-recall` | 目标导向图检索（自己的记忆图），**独立路径** | `req_channel_separation`（图检索通道） | `fakeren-recall` |
-| `fakeren-situational` | L1 处境：拉取/理解用户当下状况，目标导向 | `req_l1_situational_awareness` | `fakeren-situational` |
+| `golem-drift` | L0/L0.5 漂移：从真实史游标 + 记忆图采样种子，AI 自身情绪加权（D2），注入 ambient | `req_l0_real_history_drift` `req_l05_knowledge_trajectory` `req_l0_emotion_coupling` | `golem-drift` |
+| `golem-recall` | 目标导向图检索（自己的记忆图），**独立路径** | `req_channel_separation`（图检索通道） | `golem-recall` |
+| `golem-situational` | L1 处境：拉取/理解用户当下状况，目标导向 | `req_l1_situational_awareness` | `golem-situational` |
 
-### L3 · `fakeren-grader`（任务分级器）
+### L3 · `golem-grader`（任务分级器）
 - 分类：`{leakStrength: strong|weak|zero, confidence}`
 - fail-safe：**置信度低 → 按 zero**（强漏误判比弱漏漏判危险，见需求张力 #2）
 - 映射 `req_leak_by_task_class`（创作·构思=strong / 事实查询=weak / 执行命令=zero）
 - 与后筛协作：`req_leak_postfilter_dynamic`（执行命令/改代码歧义 → `askUser` 交选项）
 
-### L3 · `fakeren-eval`（评测，非日常）
+### L3 · `golem-eval`（评测，非日常）
 - 反事实重跑：同 seed 同参数，带种子 / 不带种子各跑一遍，diff 输出（`req_output_attribution`）
 - 挂 dsh `llm-replay` + fork/resume + `tokenMeter`（base-analysis §5 已确认基础设施齐）
 - **评测模式常开、日常只留 C1（记注入了什么）**（需求张力 #1 的降级路径）
 
-### L4 · `fakeren-signal-bus`（感知总线，D4）
+### L4 · `golem-signal-bus`（感知总线，D4）
 - 信号源插件契约（§5）：Definition / Provider / Consumer 三角
 - 宿主只管：采集开关（`req_capture_whitelist`）+ 本地留存（`req_local_only`）+ 不可达即 no-op（`req_degrade_no_fabricate`）
 - **模态/语义边界归 Provider 自管**（D4）；消费方把信号写入 L2 记忆图 + 真实史游标
 
-### L5 · `fakeren-precompose`（表达层）
+### L5 · `golem-precompose`（表达层）
 - `agent/pre-step` 内：grader 定级 → 向三通道取贡献 → 按 persona 组装注入消息（带 source 标签）
 - 衰减：`req_ambient_decay_stream` 用 **Plan B 停复注 + 留痕**（不遮蔽、不碰 dsh 窗口）：低于权重阈值的种子不再被选中注入，永久记忆原封不动。详见 §7 与 `dec_decay_planb`
 
@@ -109,7 +109,7 @@
 
 ### 3.1 各通道独立状态机
 
-**漂移通道 `fakeren-drift`**（非目标导向，漏而非查）
+**漂移通道 `golem-drift`**（非目标导向，漏而非查）
 ```
 gathering ──(runIdle 周期扫描真实史游标+记忆图)──> staged
 staged   ──(pre-step 读取)──> injecting
@@ -118,12 +118,12 @@ injecting──(停复注, 旧种子不再被选中)──> cooling ──> stag
 - 种子池存 `storageDomain`（H2 持久），不靠 `ctx.jobs`（H2 jobs 进程本地会死）。
 - **gathering 只骑 `ctx.sessionPersistence.list()/load()`（跨会话扫原始事件，非 `sessionQuery` 的模型可见投影）+ `MemoryReader.queryCrossDomain()`；代码层禁止出现 `ctx.sessionQuery`**。`sessionPersistence` 是 dsh 文档化插件面 API（实测存在：`list()` 枚举持久会话、`load(id)` 读原始事件），故 RealHistoryCursor 不 fork 任何核心。枚举 / 读取时按 `instanceId` 过滤，只取**该假人**的会话（D5，全量跨会话但假人边界）。
 
-**图检索通道 `fakeren-recall`**（目标导向）
+**图检索通道 `golem-recall`**（目标导向）
 ```
 idle ──(agent 显式需要事实)──> querying ──> injecting ──> idle
 ```
 
-**处境通道 `fakeren-situational`**（目标导向，理解用户）
+**处境通道 `golem-situational`**（目标导向，理解用户）
 ```
 idle ──(感知总线/对话拉取用户处境)──> sensing ──> injecting ──> idle
 ```
@@ -131,8 +131,8 @@ idle ──(感知总线/对话拉取用户处境)──> sensing ──> inject
 ### 3.2 分离保障（三层强制，C2）
 
 1. **类型隔离**：每条贡献 `AmbientContribution { channel: 'drift'|'recall'|'situational', sourceTag, payload }`；`drift` 分支的编译器类型**只暴露 `RealHistoryCursor` 与 `MemoryReader`，不含 `ctx.sessionQuery`**——从 API 层就堵死借道。
-2. **源标签审计**：所有注入消息带 `source:{kind:'plugin',plugin:'fakeren-*'}`；`req_seed_provenance` 由「model-visible 必 logged」不变量（base-analysis §3.1）免费强制。
-3. **不变量校验**：注册 `ctx.invariants` 检查「`fakeren-drift` 来源的事件必须有真实史游标 id 或记忆图节点 id 作证，否则 `fail()`」——把 C2 从约定升级成运行时会抛错的机器校验。
+2. **源标签审计**：所有注入消息带 `source:{kind:'plugin',plugin:'golem-*'}`；`req_seed_provenance` 由「model-visible 必 logged」不变量（base-analysis §3.1）免费强制。
+3. **不变量校验**：注册 `ctx.invariants` 检查「`golem-drift` 来源的事件必须有真实史游标 id 或记忆图节点 id 作证，否则 `fail()`」——把 C2 从约定升级成运行时会抛错的机器校验。
 
 ---
 
@@ -142,7 +142,7 @@ idle ──(感知总线/对话拉取用户处境)──> sensing ──> inject
 [用户消息] → dsh turn
    │
    ▼
-agent/pre-step (fakeren-precompose)
+agent/pre-step (golem-precompose)
    ├─ grader 分类(strong/weak/zero, 置信低→zero)
    ├─ 取贡献：drift(staged 种子) / situational(如需) / recall(如需)
    ├─ 组装带 source 标签的注入 UserMessage
@@ -191,7 +191,7 @@ interface SignalConsumer {
 }
 ```
 
-**宿主（`fakeren-signal-bus`）职责**：注册 Provider、按 `refreshIntervalMs` 轮询、路由到 Consumer、强制 `req_capture_whitelist`（每源独立开关 + 最小采集 + 可随时停）、`req_local_only`（本地处理不留外发）、`req_plugin_isolation` + `req_degrade_no_fabricate`（不可达=无注入，绝不编造）。**「进来的是什么、用到什么程度（是否转录/识别）」是 Provider 自己的责任**（D4），宿主不规定。
+**宿主（`golem-signal-bus`）职责**：注册 Provider、按 `refreshIntervalMs` 轮询、路由到 Consumer、强制 `req_capture_whitelist`（每源独立开关 + 最小采集 + 可随时停）、`req_local_only`（本地处理不留外发）、`req_plugin_isolation` + `req_degrade_no_fabricate`（不可达=无注入，绝不编造）。**「进来的是什么、用到什么程度（是否转录/识别）」是 Provider 自己的责任**（D4），宿主不规定。
 
 ---
 
@@ -221,7 +221,7 @@ interface SignalConsumer {
 
 | 风险 | 闭合方案 |
 |---|---|
-| 输出级归因只能近似、天真做法违反禁编造（需求张力 #1） | 反事实重跑 `fakeren-eval`；评测模式常开、日常只留 C1（记注入） |
+| 输出级归因只能近似、天真做法违反禁编造（需求张力 #1） | 反事实重跑 `golem-eval`；评测模式常开、日常只留 C1（记注入） |
 | 任务分级误判（需求张力 #2） | fail-safe：置信低→zero；强漏误判比弱漏漏判危险 |
 | 信号边界下放（需求张力 #3 / D4） | 信号总线设计已落地：宿主只管进/存/停，语义归 Provider |
 | H1 无 24/7 | C1=A 已决：只在进程常驻期漂，靠长开程序解决 |

@@ -40,7 +40,7 @@ class FakeSource implements KnowledgeSource {
 
 let tmpdir: string;
 beforeEach(() => {
-  tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "fakeren-dual-"));
+  tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "golem-dual-"));
 });
 afterEach(() => {
   fs.rmSync(tmpdir, { recursive: true, force: true });

@@ -1,10 +1,10 @@
 /**
- * 假人 (FakeRen) — shared domain types + dsh seam contracts.
+ * 假人 (Golem) — shared domain types + dsh seam contracts.
  *
  * The dsh boundary is intentionally typed loosely (`DshContext` is a structural
  * description of the seams proven to exist in base-analysis.md §2; we never fork
  * or patch dsh core — only consume its documented plugin surface). Everything
- * *inside* fakeren is strictly typed.
+ * *inside* golem is strictly typed.
  */
 
 // ── dsh seam contracts (mirror base-analysis.md §2 evidence) ────────────────
@@ -13,7 +13,7 @@
 export interface UserMessage {
   role: "user";
   content: string;
-  /** fakeren source tags: e.g. { channel: "drift", seedId: "..." } */
+  /** golem source tags: e.g. { channel: "drift", seedId: "..." } */
   meta?: Record<string, unknown>;
 }
 
@@ -34,7 +34,7 @@ export interface RawSessionEvent {
   timestamp: number;
   payload: Record<string, unknown>;
   /**
-   * Set when this event was synthesized by fakeren (persona / subconscious
+   * Set when this event was synthesized by golem (persona / subconscious
    * leakage) rather than typed by the human. Lets syncLatestTurn exclude
    * injected text from the memory graph without fragile string-prefix matching
    * (TODO#28 resolved). Carried through from `data.source.fakeren` at load time.
@@ -54,7 +54,7 @@ export interface UserQuestions {
 }
 
 /**
- * The subset of dsh's Cordis context fakeren depends on. We cast the real
+ * The subset of dsh's Cordis context golem depends on. We cast the real
  * `ctx` to this at the plugin boundary (see adapter/dsh-seams.ts).
  */
 export interface DshContext {
@@ -88,7 +88,7 @@ export interface InstanceMeta {
   /** total turns this instance has lived through */
   turns: number;
   /**
-   * Per-instance persona declaration (维度 I: multi-fakeren). Injected as the
+   * Per-instance persona declaration (维度 I: multi-golem). Injected as the
    * first user-role message each session so the model adopts this identity.
    * When absent the agent falls back to DEFAULT_PERSONA (#27).
    */
@@ -133,7 +133,7 @@ export interface GraphNode {
   valence: number;
   /** 多维情绪本体 (褒/贬/惧/恋)。记忆图按 valence 回忆与漂移加权。 */
   valenceVec?: ValenceVector;
-  /** Always true for fakeren — distinguishes from lobster's *user* emotion. */
+  /** Always true for golem — distinguishes from lobster's *user* emotion. */
   valenceSelf: true;
   /** Drift seed weight; lower → decays out of injection (Plan B). */
   weight: number;

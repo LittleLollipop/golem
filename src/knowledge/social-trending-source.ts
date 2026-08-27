@@ -57,7 +57,7 @@ export class SocialTrendingKnowledgeSource implements KnowledgeSource {
       this.fetchImpl,
       this.endpoint,
       this.timeoutMs,
-      { "User-Agent": "fakeren/0.1 (https://github.com/LittleLollipop; local)" },
+      { "User-Agent": "golem/0.1 (https://github.com/LittleLollipop; local)" },
     );
     if (!json?.hits) return [];
 

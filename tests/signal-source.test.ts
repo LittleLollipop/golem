@@ -17,7 +17,7 @@ describe("LocalClockSource (#24)", () => {
 
 describe("FileNotesSource (#24)", () => {
   it("tails lines appended after construction", async () => {
-    const file = path.join(os.tmpdir(), `fakeren-notes-${Date.now()}.txt`);
+    const file = path.join(os.tmpdir(), `golem-notes-${Date.now()}.txt`);
     fs.writeFileSync(file, "第一行\n");
     const s = new FileNotesSource(file);
     const first = await s.poll("i1");

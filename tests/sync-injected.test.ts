@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { FakerenAgent } from "../src/agent/fakeren-agent.js";
+import { GolemAgent } from "../src/agent/golem-agent.js";
 import { Grader } from "../src/agent/grader.js";
 
 /** Minimal fakes — vitest transpiles without typechecking, so loose stubs are
@@ -22,7 +22,7 @@ class FakeWriter {
 
 function makeAgent(evs: any[]) {
   const postFilterStub: any = { decide: (c: any) => ({ action: "keep", contributions: c, reason: "stub" }) };
-  return new FakerenAgent(
+  return new GolemAgent(
     new Grader(),
     stub,
     stub,

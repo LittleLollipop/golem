@@ -1,6 +1,6 @@
-// memory-sidecar.mjs — minimal in-memory axolotl-compatible sidecar for fakeren.
+// memory-sidecar.mjs — minimal in-memory axolotl-compatible sidecar for golem.
 //
-// Purpose: let fakeren's core feature (假人潜意识渗漏) actually run locally
+// Purpose: let golem's core feature (假人潜意识渗漏) actually run locally
 // without the real axolotl_rs graph backend. It implements the exact HTTP
 // contract that src/memory/axolotl-client.ts expects, and seeds a "default"
 // fake-person with some memory so the recall + drift channels produce real
@@ -122,7 +122,7 @@ seed.nodes.push(
   },
 );
 // NOTE: for demo readability the drift seed edges use human-readable phrases in
-// from/to (instead of node ids). fakeren's DriftChannel emits `[跨域联想] ${e.from} ↔ ${e.to}`
+// from/to (instead of node ids). golem's DriftChannel emits `[跨域联想] ${e.from} ↔ ${e.to}`
 // verbatim, so this keeps the leaked block legible in the local test sidecar.
 seed.edges.push(
   {

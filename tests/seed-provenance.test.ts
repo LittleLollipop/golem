@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { stampInjection } from "../src/agent/provenance.js";
-import { FakerenAgent } from "../src/agent/fakeren-agent.js";
+import { GolemAgent } from "../src/agent/golem-agent.js";
 import { Grader } from "../src/agent/grader.js";
 import type { ChannelContribution } from "../src/types.js";
 
@@ -69,7 +69,7 @@ const persistStub = { loadSessionEvents: async () => [] };
 const postFilterStub = { decide: (c: any) => ({ action: "keep", contributions: c, reason: "stub" }) };
 
 function buildAgent() {
-  return new FakerenAgent(
+  return new GolemAgent(
     new Grader(),
     driftStub as any,
     recallStub as any,

@@ -120,7 +120,7 @@
       <text x="56" y="66" font-size="11" fill="#64748b">表达层</text>
       <text x="56" y="86" font-size="11" fill="#64748b">Expression</text>
       <g font-size="13" fill="#1e3a5f">
-        <rect x="120" y="36" width="190" height="42" rx="9" fill="#7dd3fc" stroke="#38bdf8"/><text x="215" y="62" text-anchor="middle">fakeren-precompose</text>
+        <rect x="120" y="36" width="190" height="42" rx="9" fill="#7dd3fc" stroke="#38bdf8"/><text x="215" y="62" text-anchor="middle">golem-precompose</text>
         <rect x="330" y="36" width="130" height="42" rx="9" fill="#bae6fd" stroke="#7dd3fc"/><text x="395" y="62" text-anchor="middle">persona profile</text>
         <rect x="480" y="36" width="200" height="42" rx="9" fill="#bae6fd" stroke="#7dd3fc"/><text x="580" y="62" text-anchor="middle">后筛 (userQuestions)</text>
       </g>
@@ -130,7 +130,7 @@
       <text x="56" y="164" font-size="11" fill="#64748b">感知总线</text>
       <text x="56" y="184" font-size="11" fill="#64748b">Signal Bus</text>
       <g font-size="13" fill="#4c1d95">
-        <rect x="120" y="134" width="230" height="42" rx="9" fill="#c4b5fd" stroke="#a78bfa"/><text x="235" y="160" text-anchor="middle">fakeren-signal-bus</text>
+        <rect x="120" y="134" width="230" height="42" rx="9" fill="#c4b5fd" stroke="#a78bfa"/><text x="235" y="160" text-anchor="middle">golem-signal-bus</text>
         <rect x="370" y="134" width="330" height="42" rx="9" fill="#ddd6fe" stroke="#c4b5fd"/><text x="535" y="160" text-anchor="middle">信号源插件 (Definition/Provider/Consumer)</text>
       </g>
 
@@ -151,7 +151,7 @@
       <text x="56" y="360" font-size="11" fill="#64748b">记忆基座</text>
       <text x="56" y="380" font-size="11" fill="#64748b">Memory (axolotl)</text>
       <g font-size="12.5" fill="#134e4a">
-        <rect x="120" y="330" width="240" height="42" rx="9" fill="#5eead4" stroke="#2dd4bf"/><text x="240" y="356" text-anchor="middle">fakeren-memory</text>
+        <rect x="120" y="330" width="240" height="42" rx="9" fill="#5eead4" stroke="#2dd4bf"/><text x="240" y="356" text-anchor="middle">golem-memory</text>
         <rect x="372" y="330" width="290" height="42" rx="9" fill="#ccfbf1" stroke="#5eead4"/><text x="517" y="356" text-anchor="middle">Writer / Reader / Consolidator / GraphSchema</text>
       </g>
 
@@ -160,7 +160,7 @@
       <text x="56" y="458" font-size="11" fill="#64748b">实例管理层</text>
       <text x="56" y="478" font-size="11" fill="#64748b">Instance (D5)</text>
       <g font-size="12" fill="#7f1d1d">
-        <rect x="120" y="428" width="230" height="42" rx="9" fill="#fca5a5" stroke="#f87171"/><text x="235" y="454" text-anchor="middle">fakeren-registry</text>
+        <rect x="120" y="428" width="230" height="42" rx="9" fill="#fca5a5" stroke="#f87171"/><text x="235" y="454" text-anchor="middle">golem-registry</text>
         <rect x="362" y="428" width="300" height="42" rx="9" fill="#fee2e2" stroke="#fca5a5"/><text x="512" y="454" text-anchor="middle">配置页(新建/列出) · 会话选定 · 不可中途切换</text>
       </g>
 
@@ -169,7 +169,7 @@
       <text x="56" y="550" font-size="11" fill="#64748b">薄适配层</text>
       <text x="56" y="570" font-size="11" fill="#64748b">Adapter (C3)</text>
       <g font-size="12" fill="#7c2d12">
-        <rect x="120" y="520" width="230" height="42" rx="9" fill="#f6c177" stroke="#f0b34d"/><text x="235" y="546" text-anchor="middle">fakeren-adapter</text>
+        <rect x="120" y="520" width="230" height="42" rx="9" fill="#f6c177" stroke="#f0b34d"/><text x="235" y="546" text-anchor="middle">golem-adapter</text>
         <rect x="362" y="520" width="300" height="42" rx="9" fill="#fde9c4" stroke="#f6c177"/><text x="512" y="546" text-anchor="middle">preStep · idle · invariant · askUser · persist</text>
       </g>
 
@@ -202,37 +202,37 @@
     <table>
       <thead><tr><th style="width:24%">模块 / 层</th><th style="width:38%">职责</th><th style="width:22%">主满足 req</th><th>源标签</th></tr></thead>
       <tbody>
-        <tr><td><b>L1 · fakeren-adapter</b><br><span class="note">薄适配层 (C3)</span></td>
+        <tr><td><b>L1 · golem-adapter</b><br><span class="note">薄适配层 (C3)</span></td>
           <td>唯一 import dsh 处。包 <code>agent/pre-step</code>、<code>runMaintenance</code>、<code>ctx.invariants</code>、<code>userQuestions.ask()</code>、<code>storageDomain</code>。</td>
           <td>req_async_precompute · req_degrade_no_fabricate · req_leak_postfilter_dynamic</td><td>—</td></tr>
-        <tr><td><b>L1.5 · fakeren-registry</b><br><span class="note">实例管理层 (D5)</span></td>
+        <tr><td><b>L1.5 · golem-registry</b><br><span class="note">实例管理层 (D5)</span></td>
           <td>假人注册表：每假人=独立 axolotl 命名空间+独立学习进度/种子池；配置页新建/列出假人；会话开始选定 instanceId，绑定后不变量拒变更。</td>
           <td>req_iso_unit · req_iso_namespace · req_iso_config_page · req_iso_session_select · req_iso_no_mid_switch · req_iso_learning_scoped</td><td>—</td></tr>
-        <tr><td><b>L2 · fakeren-memory</b><br><span class="note">记忆基座 (D1)</span></td>
+        <tr><td><b>L2 · golem-memory</b><br><span class="note">记忆基座 (D1)</span></td>
           <td>包 axolotl_rs。暴露 <code>MemoryWriter</code>/<code>MemoryReader</code>/<code>Consolidator</code>。D1 的唯一记忆落地。</td>
           <td>维度 H 全 9 条</td><td>—</td></tr>
-        <tr><td><b>L3 · fakeren-drift</b></td>
+        <tr><td><b>L3 · golem-drift</b></td>
           <td>L0/L0.5 漂移：真实史游标 + 记忆图采样种子，AI 自身情绪加权（D2），注入 ambient。</td>
           <td>req_l0_real_history_drift · req_l05_knowledge_trajectory · req_l0_emotion_coupling</td>
-          <td><span class="pill drift">fakeren-drift</span></td></tr>
-        <tr><td><b>L3 · fakeren-recall</b></td>
+          <td><span class="pill drift">golem-drift</span></td></tr>
+        <tr><td><b>L3 · golem-recall</b></td>
           <td>目标导向图检索（自己的记忆图），独立路径。</td>
           <td>req_channel_separation（图检索通道）</td>
-          <td><span class="pill recall">fakeren-recall</span></td></tr>
-        <tr><td><b>L3 · fakeren-situational</b></td>
+          <td><span class="pill recall">golem-recall</span></td></tr>
+        <tr><td><b>L3 · golem-situational</b></td>
           <td>L1 处境：拉取/理解用户当下状况，目标导向。</td>
           <td>req_l1_situational_awareness</td>
-          <td><span class="pill situational">fakeren-situational</span></td></tr>
-        <tr><td><b>L3 · fakeren-grader</b></td>
+          <td><span class="pill situational">golem-situational</span></td></tr>
+        <tr><td><b>L3 · golem-grader</b></td>
           <td>分类 {strong|weak|zero, confidence}；fail-safe 置信低→zero；映射 <code>req_leak_by_task_class</code>。</td>
           <td>req_leak_by_task_class · req_leak_postfilter_dynamic</td><td>—</td></tr>
-        <tr><td><b>L3 · fakeren-eval</b></td>
+        <tr><td><b>L3 · golem-eval</b></td>
           <td>反事实重跑（带/不带领子各跑一遍 diff）；挂 <code>llm-replay</code>+<code>tokenMeter</code>。</td>
           <td>req_output_attribution</td><td>—</td></tr>
-        <tr><td><b>L4 · fakeren-signal-bus</b></td>
+        <tr><td><b>L4 · golem-signal-bus</b></td>
           <td>信号源插件契约（§5）；采集开关/本地留存/不可达即 no-op。</td>
           <td>req_capture_whitelist · req_local_only · req_degrade_no_fabricate</td><td>—</td></tr>
-        <tr><td><b>L5 · fakeren-precompose</b></td>
+        <tr><td><b>L5 · golem-precompose</b></td>
           <td><code>pre-step</code> 内：grader 定级→向三通道取贡献→按 persona 组装注入（带 source 标签）；衰减（Plan B 停复注 + 留痕，不遮蔽、不碰 dsh 窗口）。</td>
           <td>req_ambient_decay_stream</td><td>—</td></tr>
       </tbody>
@@ -325,8 +325,8 @@
       <thead><tr><th style="width:30%">层</th><th>机制</th></tr></thead>
       <tbody>
         <tr><td><b>① 类型隔离</b></td><td>每条贡献 <code>AmbientContribution{channel, sourceTag, payload}</code>；<code>drift</code> 分支的编译器类型 <b>只暴露 <code>RealHistoryCursor</code> 与 <code>MemoryReader</code>，不含 <code>ctx.sessionQuery</code></b>——从 API 层就堵死借道。</td></tr>
-        <tr><td><b>② 源标签审计</b></td><td>所有注入消息带 <code>source:{kind:'plugin',plugin:'fakeren-*'}</code>；<code>req_seed_provenance</code> 由「model-visible 必 logged」不变量（base-analysis §3.1）免费强制。</td></tr>
-        <tr><td><b>③ 不变量校验</b></td><td>注册 <code>ctx.invariants</code> 检查「<code>fakeren-drift</code> 来源的事件必须有真实史游标 id 或记忆图节点 id 作证，否则 fail()」——把 C2 从约定升级成运行时会抛错的机器校验。</td></tr>
+        <tr><td><b>② 源标签审计</b></td><td>所有注入消息带 <code>source:{kind:'plugin',plugin:'golem-*'}</code>；<code>req_seed_provenance</code> 由「model-visible 必 logged」不变量（base-analysis §3.1）免费强制。</td></tr>
+        <tr><td><b>③ 不变量校验</b></td><td>注册 <code>ctx.invariants</code> 检查「<code>golem-drift</code> 来源的事件必须有真实史游标 id 或记忆图节点 id 作证，否则 fail()」——把 C2 从约定升级成运行时会抛错的机器校验。</td></tr>
       </tbody>
     </table>
   </div>
@@ -343,7 +343,7 @@
       <text x="48" y="44" font-size="13" font-weight="700" fill="#0f766e">TURN 周期（关键路径）</text>
       <g font-size="12.5" fill="#1e293b" text-anchor="middle">
         <rect x="60" y="60" width="150" height="44" rx="10" fill="#e0f2fe" stroke="#38bdf8"/><text x="135" y="87">用户消息</text>
-        <rect x="250" y="60" width="200" height="44" rx="10" fill="#fde68a" stroke="#f59e0b"/><text x="350" y="80">agent/pre-step</text><text x="350" y="96" font-size="10.5" fill="#92660a">fakeren-precompose</text>
+        <rect x="250" y="60" width="200" height="44" rx="10" fill="#fde68a" stroke="#f59e0b"/><text x="350" y="80">agent/pre-step</text><text x="350" y="96" font-size="10.5" fill="#92660a">golem-precompose</text>
         <rect x="500" y="60" width="150" height="44" rx="10" fill="#dcfce7" stroke="#22c55e"/><text x="575" y="87">模型响应</text>
         <rect x="700" y="60" width="170" height="44" rx="10" fill="#cffafe" stroke="#06b6d4"/><text x="785" y="80">turn 结束</text><text x="785" y="96" font-size="10.5" fill="#0e7490">MemoryWriter.extract</text>
       </g>
@@ -516,7 +516,7 @@
     <table>
       <thead><tr><th style="width:42%">风险</th><th>闭合方案</th></tr></thead>
       <tbody>
-        <tr><td>输出级归因只能近似、天真做法违反禁编造（需求张力 #1）</td><td>反事实重跑 <code>fakeren-eval</code>；评测模式常开、日常只留 C1（记注入）。</td></tr>
+        <tr><td>输出级归因只能近似、天真做法违反禁编造（需求张力 #1）</td><td>反事实重跑 <code>golem-eval</code>；评测模式常开、日常只留 C1（记注入）。</td></tr>
         <tr><td>任务分级误判（需求张力 #2）</td><td>fail-safe：置信低→zero；强漏误判比弱漏漏判危险。</td></tr>
         <tr><td>信号边界下放（需求张力 #3 / D4）</td><td>信号总线设计已落地：宿主只管进/存/停，语义归 Provider。</td></tr>
         <tr><td>H1 无 24/7</td><td>C1=A 已决：只在进程常驻期漂，靠长开程序解决。</td></tr>

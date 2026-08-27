@@ -7,7 +7,7 @@ import {
 } from "../scripts/inspect-core.mjs";
 
 const SEED_LINE =
-  '[fakeren:pre-step]   seed drift_xd_喜欢在雨天独处听歌_对陌生环境有警惕心 [drift] src=edge:喜欢在雨天独处听歌->对陌生环境有警惕心 path="crossDomain by |valence| rank 1 (valence 0)" at=2026-08-25T12:13:12.720Z';
+  '[golem:pre-step]   seed drift_xd_喜欢在雨天独处听歌_对陌生环境有警惕心 [drift] src=edge:喜欢在雨天独处听歌->对陌生环境有警惕心 path="crossDomain by |valence| rank 1 (valence 0)" at=2026-08-25T12:13:12.720Z';
 
 describe("inspect CLI core (req_inspect_cli)", () => {
   describe("parseSeedLine", () => {
@@ -22,7 +22,7 @@ describe("inspect CLI core (req_inspect_cli)", () => {
     });
 
     it("returns null for non-seed log lines", () => {
-      expect(parseSeedLine("[fakeren:pre-step] exit leaked=1")).toBeNull();
+      expect(parseSeedLine("[golem:pre-step] exit leaked=1")).toBeNull();
       expect(parseSeedLine("")).toBeNull();
       expect(parseSeedLine(undefined)).toBeNull();
     });
@@ -31,10 +31,10 @@ describe("inspect CLI core (req_inspect_cli)", () => {
   describe("lastSeedsFromLog", () => {
     it("returns the most recent n seed records in order", () => {
       const log = [
-        "[fakeren:pre-step] enter session=s claimed=1",
+        "[golem:pre-step] enter session=s claimed=1",
         SEED_LINE,
-        '[fakeren:pre-step]   seed recall_n_cat_0 [recall] src=node:n_cat path="recall keyword match rank 1" at=2026-08-25T12:13:12.721Z',
-        "[fakeren:pre-step] exit leaked=2",
+        '[golem:pre-step]   seed recall_n_cat_0 [recall] src=node:n_cat path="recall keyword match rank 1" at=2026-08-25T12:13:12.721Z',
+        "[golem:pre-step] exit leaked=2",
       ].join("\n");
       const seeds = lastSeedsFromLog(log, 20);
       expect(seeds).toHaveLength(2);

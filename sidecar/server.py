@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-假人 (FakeRen) — axolotl sidecar.
+假人 (Golem) — axolotl sidecar.
 
-The ONLY process that touches axolotl_rs. One graph file per fakeren instance
+The ONLY process that touches axolotl_rs. One graph file per golem instance
 (维度 I: per-instance namespace). Exposes a tiny HTTP API consumed by the TS
 plugin's AxolotlClient. No file/markdown memory or logs — axolotl is the single
 source of truth (dec_memory_axolotl_only).
@@ -29,7 +29,7 @@ from urllib.parse import urlparse
 import axolotl_rs  # type: ignore
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger("fakeren-sidecar")
+logger = logging.getLogger("golem-sidecar")
 
 ROOT = int.from_bytes(hashlib.sha256(b"fakeren_root").digest()[:8], "big")
 DECAY_FACTOR = 0.9
@@ -322,7 +322,7 @@ def main():
     sc = Sidecar(args.root)
     Handler.sidecar = sc
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
-    logger.info("fakeren sidecar on http://%s:%d  root=%s", args.host, args.port, args.root)
+    logger.info("golem sidecar on http://%s:%d  root=%s", args.host, args.port, args.root)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

@@ -20,7 +20,7 @@ describe("DshAdapter.onPreStep — message source hygiene", () => {
     const adapter = new DshAdapter(ctx);
 
     // Assemble stub that returns an injected "assembled" block carrying seeds
-    // (the real FakerenAgent.provenance stamping produces exactly this shape).
+    // (the real GolemAgent.provenance stamping produces exactly this shape).
     adapter.onPreStep(async () => [
       {
         role: "user",

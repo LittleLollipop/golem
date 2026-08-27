@@ -199,7 +199,7 @@ export class WikipediaKnowledgeSource implements KnowledgeSource {
     try {
       const res = await this.fetchImpl(url, {
         headers: {
-          "User-Agent": "fakeren/0.1 (https://github.com/LittleLollipop; local)",
+          "User-Agent": "golem/0.1 (https://github.com/LittleLollipop; local)",
           Accept: "application/json",
         },
         signal: ctrl.signal,

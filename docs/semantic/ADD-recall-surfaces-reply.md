@@ -4,7 +4,7 @@
 用户让假人"看新闻"后，记忆渗漏里只出现自己的提问，假人的回复/总结从不出现，观感像"没记住"。
 
 ## 根因（已逐行核对代码）
-- 回复**已正确落库**：`FakerenAgent.syncLatestTurn`（fakeren-agent.ts:134-139）把 `assistant.payload.text` 送 `writeTurn`；`HeuristicExtractor`（writer.ts:84-89）写入一个 Event 节点，`props.assistantText` = 完整回复（含甲醛白菜等）。
+- 回复**已正确落库**：`GolemAgent.syncLatestTurn`（golem-agent.ts:134-139）把 `assistant.payload.text` 送 `writeTurn`；`HeuristicExtractor`（writer.ts:84-89）写入一个 Event 节点，`props.assistantText` = 完整回复（含甲醛白菜等）。
 - 回复**已可检索**：sidecar `matchNodes`（memory-sidecar.mjs:151）匹配范围为 `label + " " + JSON.stringify(props)`，回复正文参与关键词命中（"白菜"可命中该节点）。
 - **唯一缺口**：`RecallChannel.gather`（recall-channel.ts:59）写死 `content: [图检索] ${n.label}`，只回显标签（用户的提问），`props.assistantText`（她的回复）从不吐出。
 

@@ -1,4 +1,4 @@
-// Local end-to-end check for fakeren's pre-step seam — NO LLM key needed.
+// Local end-to-end check for golem's pre-step seam — NO LLM key needed.
 // It loads the real compiled plugin via `apply`, registers the pre-step
 // listener against a mock dsh context, feeds one user message, and asserts:
 //   1. the sidecar is reached (recall/drift actually return seeded memory),

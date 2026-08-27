@@ -1,7 +1,7 @@
 /**
  * GraphStore — the memory substrate contract (维度 H).
  *
- * All memory access (read & write) for a fakeren instance goes through this
+ * All memory access (read & write) for a golem instance goes through this
  * interface. The only production implementation talks to the axolotl sidecar
  * (axolotl_rs), per the decision `dec_memory_axolotl_only`: NO file/markdown
  * memory or logs — axolotl is the single source of truth, and it is per-instance
@@ -54,7 +54,7 @@ export interface GraphStore {
 
   // ── Instance metadata + session binding (维度 I) ──────────────────────
   // These live in the same substrate as the memory graph: the substrate is
-  // fakeren's single source of truth, not dsh's storageDomain.
+  // golem's single source of truth, not dsh's storageDomain.
 
   /** Read one instance's metadata (name/createdAt/turns), or null if absent. */
   getMeta(id: InstanceId): Promise<InstanceMeta | null>;

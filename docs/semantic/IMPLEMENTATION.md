@@ -1,4 +1,4 @@
-# 假人 (FakeRen) · 实现说明（阶段三落地）
+# 假人 (Golem) · 实现说明（阶段三落地）
 
 > 评审通过后由 WorkBuddy 直接写码（`dec_code_workbuddy`）。本文件记录**实现态**与运行方式，架构设计见 `architecture.md` / `architecture.html`。
 
@@ -22,7 +22,7 @@
 ## 文件地图
 
 ```
-fakeren/
+golem/
 ├── src/
 │   ├── types.ts                  # 域类型 + dsh seam 契约（DshContext 结构描述）
 │   ├── cordis-shim.d.ts          # 让插件脱离 dsh 独立 type-check 的最小 cordis 声明
@@ -42,7 +42,7 @@ fakeren/
 │   ├── bus/signal-bus.ts         # 信号源插件契约（D4 模态不可知）
 │   └── agent/
 │       ├── grader.ts             # 任务分级器（fail-safe：低置信→zero）
-│       └── fakeren-agent.ts      # 按 grade 路由三通道 + turn-start 记忆同步 + idle 维护
+│       └── golem-agent.ts      # 按 grade 路由三通道 + turn-start 记忆同步 + idle 维护
 ├── sidecar/
 │   ├── server.py                 # 唯一碰 axolotl_rs 的进程：每假人独立 .axeb，HTTP API
 │   └── requirements.txt          # 仅依赖 axolotl_rs
@@ -75,7 +75,7 @@ fakeren/
 - **#22 真实抽取器（`req_memory_recursive_growth` ✅）**：`Extractor` 缝 + `HeuristicExtractor`（兜底）+ `LlmExtractor`（设 `DEEPSEEK_API_KEY` 启用），产出 Entity/Event + causal/crossdomain_weak 边，不编造。
 - **#24 情境信号源（`req_signal_source_extensible` + `req_l1_situational_awareness` ✅）**：`SignalSource` 可插拔接口 + `LocalClockSource`/`FileNotesSource`，组合根注册进 `SignalBus`；宿主模态不可知（`decision_host_modality_agnostic`）。
 - **#23 多维 valence（`req_memory_valence` + `dec_valence_ai_self` ✅，已修正）**：改为 **AI 自身四维情绪**（褒/贬/惧/恋）。`ValenceEstimator.estimate` 返回 `ValenceVector`；`HeuristicValence`/`LlmValence` 均产出四维；`GraphNode.valenceVec` 落库，`valenceScalar` 派生单维标量供 recall by magnitude。纠正了此前「单维标量」对设计的偏离。
-- **#25 任务类型分级器（`req_leak_by_task_class` + `decision_leak_by_task_class` ✅，已修正）**：改为按**任务类型**分类 `execute/creative/neutral → leakLevel none/weak/strong`。`fakeren-agent.assemble` 据此路由：**执行命令→仅 recall（零漏，严守禁编造）**；对话/创作/构思→drift+situational+recall（强漏）。纠正了此前「问句强度」分类导致命令被最大漏出的偏离。
+- **#25 任务类型分级器（`req_leak_by_task_class` + `decision_leak_by_task_class` ✅，已修正）**：改为按**任务类型**分类 `execute/creative/neutral → leakLevel none/weak/strong`。`golem-agent.assemble` 据此路由：**执行命令→仅 recall（零漏，严守禁编造）**；对话/创作/构思→drift+situational+recall（强漏）。纠正了此前「问句强度」分类导致命令被最大漏出的偏离。
 - **#27 多假人隔离三件套（`req_iso_config_page` / `req_iso_session_select` / `req_iso_no_mid_switch` ✅）**：
   - 配置页 UI：`public/iso-config.html`（列表/新建/设 persona/设默认），由 sidecar `GET /config` 服务，**独立轻量、不 patch dsh 核心**。
   - 会话选定 + 默认实例：`onPreStep` 解析会话绑定实例，未绑定时采用配置页默认或最近创建；`getDefaultInstance/setDefaultInstance` 持久化。
@@ -85,6 +85,6 @@ fakeren/
 
 - **#26 语义图改名**：含义模糊且动 `.semantic-graph` 治理图有风险，暂缓。
 - **`req_leak_postfilter_dynamic`（执行时后筛双候选）**：当前仅有执行前任务分级（`req_leak_by_task_class` 已落地）。「同时产出带环境态/纯净两版候选 + 执行信号或交还用户后筛」尚未实现，留作后续。
-- **dsh 前端中间面板补丁**（人格/渗漏分开展示）：属 `/tmp/dsh-src` 本地补丁（`MessageItem.tsx` 等），非 fakeren 仓库，换 dsh 版本需重贴。
+- **dsh 前端中间面板补丁**（人格/渗漏分开展示）：属 `/tmp/dsh-src` 本地补丁（`MessageItem.tsx` 等），非 golem 仓库，换 dsh 版本需重贴。
 - **真实 LLM 抽取/valence/分级需 key 才激活**：默认启发式在工作；设 `DEEPSEEK_API_KEY`（`FAKEREN_LLM_*`）即启用 LLM 版，无需改码。
 - dsh 运行时集成：seam 契约已对齐 base-analysis 源码核验，本环境已实际联调跑通 S1 闭环（`verify-prestep.mjs` PASS）。
