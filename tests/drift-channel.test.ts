@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { DriftChannel } from "../src/channels/drift-channel.js";
 import { AmbientBuffer } from "../src/ambient/ambient-buffer.js";
 import { StaticKnowledgeSource } from "../src/knowledge/static-source.js";
+import { KnowledgeSourceRegistry } from "../src/knowledge/registry.js";
 import { DailyKnowledgeTracker } from "../src/knowledge/daily-tracker.js";
 import { L05Trajectory } from "../src/knowledge/l05-trajectory.js";
 import type { MemoryReader } from "../src/memory/reader.js";
@@ -46,18 +47,22 @@ describe("DriftChannel ambient integration (req_ambient_decay_stream)", () => {
 describe("DriftChannel L0.5 knowledge trajectory (req_l05_knowledge_trajectory)", () => {
   it("surfaces recent learned facts as [知识轨迹] drift seeds with citation meta", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fakeren-l05-int-"));
-    const tr = new DailyKnowledgeTracker(new StaticKnowledgeSource(), dir);
+    const tr = new DailyKnowledgeTracker(
+      new StaticKnowledgeSource(),
+      new KnowledgeSourceRegistry({ static: new StaticKnowledgeSource() }, "static"),
+      dir,
+    );
     const l05 = new L05Trajectory(tr);
-    const learned = await l05.tick("instA"); // learn top1
+    const learned = (await l05.tick("instA"))?.random; // random slot learns top1
     const ch = new DriftChannel(stubReader, stubPersist, stubRegistry, undefined, l05);
     const out = await ch.gather("instA");
     const k = out.filter((c) => c.content.startsWith("[知识轨迹]"));
     expect(k).toHaveLength(1);
     expect(k[0].content).toContain("来源");
-    expect(k[0].meta).toMatchObject({ chosenRank: 1, selectionPath: "选 top1 (rank 1)" });
+    expect(k[0].meta).toMatchObject({ chosenRank: 1, selectionPath: "随机选 (rank 1, 来源 Wikipedia)" });
     // 种子溯源 (req_seed_provenance)：L0.5 来源 URL + 选择路径已挂到 provenance
     expect(k[0].provenance?.source).toMatch(/^https?:\/\//);
-    expect(k[0].provenance?.selectionPath).toBe("选 top1 (rank 1)");
+    expect(k[0].provenance?.selectionPath).toBe("随机选 (rank 1, 来源 Wikipedia)");
     expect(k[0].provenance?.injectedAt).toBeUndefined();
     expect(learned).not.toBeNull();
     fs.rmSync(dir, { recursive: true, force: true });

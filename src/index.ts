@@ -29,6 +29,9 @@ import { SocialTrendingKnowledgeSource } from "./knowledge/social-trending-sourc
 import type { KnowledgeMode, KnowledgeSource } from "./knowledge/types.js";
 import { DailyKnowledgeTracker } from "./knowledge/daily-tracker.js";
 import { L05Trajectory } from "./knowledge/l05-trajectory.js";
+import { KnowledgeSourceRegistry } from "./knowledge/registry.js";
+import { LearningPlanner } from "./knowledge/planner.js";
+import { WebSearchKnowledgeSource } from "./knowledge/web-search-source.js";
 import { Grader } from "./agent/grader.js";
 import { LlmGrader } from "./agent/llm-grader.js";
 import type { TaskClassifier } from "./agent/grader.js";
@@ -103,25 +106,39 @@ export function apply(ctx: DshContext, config: FakerenConfig = {}): void {
   );
   const classifier: TaskClassifier = llm ? new LlmGrader(llm) : new Grader();
 
-  // ── #51: L0.5 每日知识轨迹 (pluggable live sources; static available via env) ──
+  // ── #51: L0.5 每日知识轨迹 — 双轨 (随机机械 + 目的模型驱动) ──
   const knowledgeDir = process.env.FAKEREN_KNOWLEDGE_DIR ?? "./.fakeren-knowledge";
-  const knowledgeBackend = (process.env.FAKEREN_KNOWLEDGE_SOURCE ?? "wikipedia").toLowerCase();
+  // FAKEREN_KNOWLEDGE_SOURCE 现在语义 = 锁"目的轨" source（锁渠道不锁模型，dec_l05 B）
+  const pinSource = process.env.FAKEREN_KNOWLEDGE_SOURCE || undefined;
   const knowledgeLang = process.env.FAKEREN_KNOWLEDGE_LANG ?? "zh";
   // 全局模式覆盖；不设时各源用自己的 defaultMode（wiki=random, news/social=top）。
   const modeOverride = process.env.FAKEREN_KNOWLEDGE_MODE as KnowledgeMode | undefined;
-  const knowledgeSource: KnowledgeSource =
-    knowledgeBackend === "static"
-      ? new StaticKnowledgeSource()
-      : knowledgeBackend === "news" || knowledgeBackend === "news-rss"
-      ? new NewsRssKnowledgeSource({ lang: knowledgeLang, mode: modeOverride })
-      : knowledgeBackend === "social" || knowledgeBackend === "social-hn"
-      ? new SocialTrendingKnowledgeSource({ mode: modeOverride })
-      : new WikipediaKnowledgeSource({ lang: knowledgeLang, mode: modeOverride });
-  const knowledgeTracker = new DailyKnowledgeTracker(knowledgeSource, knowledgeDir);
+
+  // 随机轨：固定 wiki random —— 抗极化引擎，永不依赖模型/图库
+  const randomSource = new WikipediaKnowledgeSource({ lang: knowledgeLang, mode: "random" });
+  // 目的轨候选源（全开放：wiki/news/social/web + 机械兜底 static）
+  const sources: Record<string, KnowledgeSource> = {
+    wiki: new WikipediaKnowledgeSource({ lang: knowledgeLang, mode: modeOverride }),
+    news: new NewsRssKnowledgeSource({ lang: knowledgeLang, mode: modeOverride }),
+    social: new SocialTrendingKnowledgeSource({ mode: modeOverride }),
+    web: new WebSearchKnowledgeSource(),
+    static: new StaticKnowledgeSource(),
+  };
+  const knowledgeRegistry = new KnowledgeSourceRegistry(sources, "wiki");
+
+  // 目的轨规划器：仅在有 LLM 时启用；否则目的轨记 empty 状态（不兜底默认内容）
+  let knowledgeTracker: DailyKnowledgeTracker;
+  const planner = llm
+    ? new LearningPlanner(llm, store, {
+        recentLearnedTitles: (id) => knowledgeTracker.recentTrajectory(id, 15).map((f) => f.title),
+        pinSource,
+      })
+    : undefined;
+  knowledgeTracker = new DailyKnowledgeTracker(randomSource, knowledgeRegistry, knowledgeDir, planner);
   const l05 = new L05Trajectory(knowledgeTracker, 7, schedulerLog);
-  const effectiveMode = process.env.FAKEREN_KNOWLEDGE_MODE ?? knowledgeSource.defaultMode;
-  const backendLabel = knowledgeBackend === "wikipedia" ? `wikipedia(${knowledgeLang})` : knowledgeBackend;
-  console.log(`[fakeren] L0.5 knowledge source = ${backendLabel}/${effectiveMode}`);
+  console.log(
+    `[fakeren] L0.5 = dual-track (random: wikipedia/random + purposeful: ${planner ? "model-planned[wiki/news/social/web]" : "no-LLM → 记 empty 状态"})`,
+  );
 
   const drift = new DriftChannel(reader, dsh, registry, ambientSource.getBuffer(), l05, loadLeakConfig(), schedulerLog);
   const recall = new RecallChannel(new GraphRecallSource(reader));

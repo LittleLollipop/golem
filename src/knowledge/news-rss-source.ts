@@ -15,7 +15,7 @@
  */
 
 import { XMLParser } from "fast-xml-parser";
-import type { KnowledgeCandidate, KnowledgeMode, KnowledgeSource } from "./types.js";
+import type { KnowledgeCandidate, KnowledgeMode, KnowledgeSource, LearningDirective } from "./types.js";
 import { fetchText, shuffle } from "./http.js";
 
 export interface NewsRssConfig {
@@ -139,7 +139,7 @@ export class NewsRssKnowledgeSource implements KnowledgeSource {
     this.parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
   }
 
-  async rankedCandidates(): Promise<KnowledgeCandidate[]> {
+  async rankedCandidates(directive?: LearningDirective): Promise<KnowledgeCandidate[]> {
     const raw: RawItem[] = [];
     for (const feed of this.feeds) {
       const xml = await fetchText(this.fetchImpl, feed, this.timeoutMs, {
@@ -175,11 +175,21 @@ export class NewsRssKnowledgeSource implements KnowledgeSource {
     }
     if (collected.length === 0) return [];
 
+    // Purposeful focus: keyword filter (directive.query) on title+summary.
+    let filtered = collected;
+    const q = directive?.query?.trim().toLowerCase();
+    if (q) {
+      filtered = collected.filter((c) =>
+        (c.cand.title + " " + c.cand.summary).toLowerCase().includes(q),
+      );
+    }
+    if (filtered.length === 0) return [];
+
     // "top" → recency desc; "random" → shuffled.
     const ordered =
       this.mode === "random"
-        ? shuffle(collected)
-        : collected.sort((a, b) => b.ts - a.ts);
+        ? shuffle(filtered)
+        : filtered.sort((a, b) => b.ts - a.ts);
 
     return ordered.map((c, i) => ({ ...c.cand, rank: i + 1 }));
   }

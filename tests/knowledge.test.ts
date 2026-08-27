@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { StaticKnowledgeSource } from "../src/knowledge/static-source.js";
+import { KnowledgeSourceRegistry } from "../src/knowledge/registry.js";
 import { DailyKnowledgeTracker } from "../src/knowledge/daily-tracker.js";
 import { L05Trajectory } from "../src/knowledge/l05-trajectory.js";
 
@@ -34,71 +35,104 @@ describe("StaticKnowledgeSource", () => {
   });
 });
 
-describe("DailyKnowledgeTracker (req_l05_knowledge_trajectory)", () => {
-  it("learns top1 on day 1, nothing more that same day, then top2 the next day", async () => {
+describe("DailyKnowledgeTracker dual-track (req_l05_knowledge_trajectory)", () => {
+  it("random slot learns top1 on day 1, top2 the next day (shared dedup)", async () => {
     const clock = makeClock();
-    const tr = new DailyKnowledgeTracker(new StaticKnowledgeSource(), tmpdir, clock.now);
-    const d1 = await tr.learnOne("instA");
-    expect(d1).not.toBeNull();
-    expect(d1!.chosenRank).toBe(1);
-    expect(d1!.selectionPath).toBe("选 top1 (rank 1)");
-    expect(d1!.sourceUrl).toContain("http");
+    const tr = new DailyKnowledgeTracker(
+      new StaticKnowledgeSource(),
+      new KnowledgeSourceRegistry({ static: new StaticKnowledgeSource() }, "static"),
+      tmpdir,
+      undefined,
+      clock.now,
+    );
+    const d1 = (await tr.ensureToday("instA")).random!;
+    expect(d1.chosenRank).toBe(1);
+    expect(d1.selectionPath).toContain("随机选");
+    expect(d1.sourceUrl).toContain("http");
 
     // same day again → quota spent
-    expect(await tr.learnOne("instA")).toBeNull();
+    expect((await tr.ensureToday("instA")).random).toBeUndefined();
 
     // next day → top2 (top1 already learned)
     clock.advanceDays(1);
-    const d2 = await tr.learnOne("instA");
-    expect(d2).not.toBeNull();
-    expect(d2!.chosenRank).toBe(2);
-    expect(d2!.selectionPath).toBe("top1 已学过 → 选 rank 2");
+    const d2 = (await tr.ensureToday("instA")).random!;
+    expect(d2.chosenRank).toBe(2);
+    expect(d2.selectionPath).toContain("rank 2");
   });
 
   it("is per-instance isolated (req_iso_learning_scoped)", async () => {
     const clock = makeClock();
-    const tr = new DailyKnowledgeTracker(new StaticKnowledgeSource(), tmpdir, clock.now);
-    const a = await tr.learnOne("A");
-    const b = await tr.learnOne("B");
-    expect(a!.chosenRank).toBe(1);
-    expect(b!.chosenRank).toBe(1); // B has its own fresh ledger
+    const mk = () =>
+      new DailyKnowledgeTracker(
+        new StaticKnowledgeSource(),
+        new KnowledgeSourceRegistry({ static: new StaticKnowledgeSource() }, "static"),
+        tmpdir,
+        undefined,
+        clock.now,
+      );
+    const a = (await mk().ensureToday("A")).random!;
+    const b = (await mk().ensureToday("B")).random!;
+    expect(a.chosenRank).toBe(1);
+    expect(b.chosenRank).toBe(1); // B has its own fresh ledger
   });
 
-  it("returns null once every candidate is learned", async () => {
+  it("random slot records 'empty' once every candidate is learned", async () => {
     const clock = makeClock();
-    const tr = new DailyKnowledgeTracker(new StaticKnowledgeSource(), tmpdir, clock.now);
+    const tr = new DailyKnowledgeTracker(
+      new StaticKnowledgeSource(),
+      new KnowledgeSourceRegistry({ static: new StaticKnowledgeSource() }, "static"),
+      tmpdir,
+      undefined,
+      clock.now,
+    );
     for (let i = 0; i < 6; i++) {
-      const f = await tr.learnOne("X");
-      expect(f).not.toBeNull();
+      const r = (await tr.ensureToday("X")).random!;
+      expect(r.status).toBe("learned");
       clock.advanceDays(1);
     }
     clock.advanceDays(1);
-    expect(await tr.learnOne("X")).toBeNull();
+    const r = await tr.ensureToday("X");
+    expect(r.random?.status).toBe("empty"); // all 6 learned → no new random content
   });
 
-  it("persists the ledger to disk (a fresh tracker instance remembers learned ids)", async () => {
+  it("persists the ledger to disk (a fresh tracker remembers learned ids)", async () => {
     const clock = makeClock();
-    const tr1 = new DailyKnowledgeTracker(new StaticKnowledgeSource(), tmpdir, clock.now);
-    await tr1.learnOne("P");
+    const tr1 = new DailyKnowledgeTracker(
+      new StaticKnowledgeSource(),
+      new KnowledgeSourceRegistry({ static: new StaticKnowledgeSource() }, "static"),
+      tmpdir,
+      undefined,
+      clock.now,
+    );
+    await tr1.ensureToday("P");
     clock.advanceDays(1);
-    const tr2 = new DailyKnowledgeTracker(new StaticKnowledgeSource(), tmpdir, clock.now);
-    const d2 = await tr2.learnOne("P"); // persisted ledger → must pick top2
-    expect(d2!.chosenRank).toBe(2);
+    const tr2 = new DailyKnowledgeTracker(
+      new StaticKnowledgeSource(),
+      new KnowledgeSourceRegistry({ static: new StaticKnowledgeSource() }, "static"),
+      tmpdir,
+      undefined,
+      clock.now,
+    );
+    const d2 = (await tr2.ensureToday("P")).random!; // persisted ledger → must pick top2
+    expect(d2.chosenRank).toBe(2);
   });
 });
 
 describe("L05Trajectory (req_l05 drift seeds)", () => {
-  it("tick learns the daily fact; seedCandidates carries citation + selection path", async () => {
-    const clock = makeClock();
-    const tr = new DailyKnowledgeTracker(new StaticKnowledgeSource(), tmpdir, clock.now);
+  it("tick ensures today's slots; seedCandidates carries citation + selection path", async () => {
+    const tr = new DailyKnowledgeTracker(
+      new StaticKnowledgeSource(),
+      new KnowledgeSourceRegistry({ static: new StaticKnowledgeSource() }, "static"),
+      tmpdir,
+    );
     const l05 = new L05Trajectory(tr);
-    const learned = await l05.tick("instA");
-    expect(learned).not.toBeNull();
-    const seeds = l05.seedCandidates("instA", 2);
-    expect(seeds).toHaveLength(1);
+    const res = await l05.tick("instA");
+    expect(res?.random).not.toBeUndefined();
+    const seeds = l05.seedCandidates("instA", 4);
+    expect(seeds.length).toBeGreaterThan(0);
     expect(seeds[0].observationText).toContain("来源");
-    expect(seeds[0].seedId).toBe(`l05_${learned!.id}`);
-    expect(seeds[0].meta?.sourceUrl).toBe(learned!.sourceUrl);
-    expect(seeds[0].meta?.selectionPath).toBe(learned!.selectionPath);
+    expect(seeds[0].seedId).toBe(`l05_${res!.random!.id}`);
+    expect(seeds[0].meta?.sourceUrl).toBe(res!.random!.sourceUrl);
+    expect(seeds[0].provenance?.selectionPath).toBe(res!.random!.selectionPath);
   });
 });

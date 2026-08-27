@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { BackgroundTaskLog } from "../src/scheduler/background-log.js";
 import { L05Trajectory } from "../src/knowledge/l05-trajectory.js";
 import { DailyKnowledgeTracker } from "../src/knowledge/daily-tracker.js";
+import { KnowledgeSourceRegistry } from "../src/knowledge/registry.js";
 import { StaticKnowledgeSource } from "../src/knowledge/static-source.js";
 import { DriftChannel } from "../src/channels/drift-channel.js";
 import type { MemoryReader } from "../src/memory/reader.js";
@@ -65,22 +66,33 @@ describe("BackgroundTaskLog core", () => {
 describe("L05Trajectory wiring", () => {
   it("logs a learn event when tick learns a new fact", async () => {
     const log = new BackgroundTaskLog(tmpLogPath());
-    const tracker = new DailyKnowledgeTracker(new StaticKnowledgeSource(), dir);
+    const tracker = new DailyKnowledgeTracker(
+      new StaticKnowledgeSource(),
+      new KnowledgeSourceRegistry({ static: new StaticKnowledgeSource() }, "static"),
+      dir,
+    );
     const l05: L05 = new L05Trajectory(tracker, 7, log);
 
-    const fact = await l05.tick("instA");
-    expect(fact).not.toBeNull();
+    const res = await l05.tick("instA");
+    expect(res).not.toBeNull();
+    const fact = res!.random ?? res!.purposeful;
+    expect(fact).not.toBeUndefined();
 
     const events = log.read();
-    expect(events).toHaveLength(1);
-    expect(events[0].kind).toBe("learn");
-    expect(events[0].instanceId).toBe("instA");
-    expect(events[0].detail.title).toBe(fact!.title);
-    expect(events[0].detail.chosenRank).toBe(fact!.chosenRank);
+    expect(events.length).toBe(2); // random learned + purposeful (empty/no-model) — both logged
+    const ev = events.find((e) => e.detail.title === fact!.title)!;
+    expect(ev.kind).toBe("learn");
+    expect(ev.instanceId).toBe("instA");
+    expect(ev.detail.title).toBe(fact!.title);
+    expect(ev.detail.chosenRank).toBe(fact!.chosenRank);
   });
 
   it("does NOT write when no log is injected (hermetic default)", async () => {
-    const tracker = new DailyKnowledgeTracker(new StaticKnowledgeSource(), dir);
+    const tracker = new DailyKnowledgeTracker(
+      new StaticKnowledgeSource(),
+      new KnowledgeSourceRegistry({ static: new StaticKnowledgeSource() }, "static"),
+      dir,
+    );
     const l05 = new L05Trajectory(tracker);
     await l05.tick("instA");
     expect(existsSync(tmpLogPath())).toBe(false);

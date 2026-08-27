@@ -11,7 +11,7 @@
  * API and inject it instead — nothing else in the pipeline changes.
  */
 
-import type { KnowledgeCandidate, KnowledgeSource } from "./types.js";
+import type { KnowledgeCandidate, KnowledgeSource, LearningDirective } from "./types.js";
 
 const FACTS: KnowledgeCandidate[] = [
   {
@@ -67,7 +67,8 @@ const FACTS: KnowledgeCandidate[] = [
 export class StaticKnowledgeSource implements KnowledgeSource {
   /** Curated, ranked facts → "top" mode. */
   readonly defaultMode = "top" as const;
-  async rankedCandidates(): Promise<KnowledgeCandidate[]> {
+  // directive is ignored: static is a mechanical fallback source (no focus).
+  async rankedCandidates(_directive?: LearningDirective): Promise<KnowledgeCandidate[]> {
     return FACTS.slice().sort((a, b) => a.rank - b.rank);
   }
 }

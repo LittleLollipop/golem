@@ -23,6 +23,42 @@ export interface KnowledgeCandidate {
 
 export type KnowledgeMode = "top" | "random";
 
+/** Which daily slot produced a learned record. */
+export type LearnKind = "random" | "purposeful";
+
+/**
+ * Status of a daily learning *attempt* (req_l05 dual-track + abstract status).
+ * The purposeful track does NOT fall back to default content; every attempt is
+ * recorded as one of these. Only "learned" content leaks into drift.
+ *   - learned: real content fetched
+ *   - empty:   source returned 0 items / graph empty / planner failed
+ *   - junk:    results all flagged as ads/spam by qualityGate
+ *   - error:   source threw / timed out
+ */
+export type LearnStatus = "learned" | "empty" | "junk" | "error";
+
+/** Backends the purposeful planner may choose among (full-open per dec). */
+export type KnowledgeBackend = "wiki" | "news" | "social" | "web" | "static";
+
+/** A model-produced learning directive (purposeful track only). */
+export interface LearningDirective {
+  source: KnowledgeBackend;
+  mode?: KnowledgeMode;
+  /** wiki search / news-social keyword focus / web search query */
+  query?: string;
+  /** why the model chose this — into selectionPath for auditability */
+  rationale: string;
+}
+
+/** Context handed to the planner when it reads the instance graph. */
+export interface LearningContext {
+  instanceId: string;
+  date: string;
+  recentTopics: string[];
+  learnedTitles: string[];
+  graphNodeCount: number;
+}
+
 export interface KnowledgeSource {
   /**
    * Per-source default selection mode:
@@ -35,8 +71,12 @@ export interface KnowledgeSource {
    * wiki → random, news/social → top.
    */
   readonly defaultMode: KnowledgeMode;
-  /** Ranked, real facts (Google/Wiki-style ranking). Stable, ascending by rank. */
-  rankedCandidates(): Promise<KnowledgeCandidate[]>;
+  /**
+   * Ranked, real facts (Google/Wiki-style ranking). Stable, ascending by rank.
+   * `directive` (purposeful track) optionally focuses the fetch by query / mode;
+   * when omitted the source behaves exactly as before (backward-compatible).
+   */
+  rankedCandidates(directive?: LearningDirective): Promise<KnowledgeCandidate[]>;
 }
 
 export interface LearnedFact {
@@ -49,6 +89,15 @@ export interface LearnedFact {
   learnedAt: number;
   /** which rank was actually chosen */
   chosenRank: number;
-  /** human-readable why, e.g. "top1 已学过 → 选 rank 2" */
+  /** human-readable why, e.g. "top1 已学过 → 选 rank 2" or "模型规划: …" */
   selectionPath: string;
+  // ── dual-track + abstract status (req_l05) ──
+  /** which slot produced this record */
+  kind: LearnKind;
+  /** outcome of the attempt: learned / empty / junk / error */
+  status: LearnStatus;
+  /** present only for purposeful records */
+  directive?: { source: string; query?: string; rationale: string };
+  /** status note (e.g. "检索返回 0 条" / "结果疑似广告已丢弃" / "源异常: …") */
+  statusNote?: string;
 }

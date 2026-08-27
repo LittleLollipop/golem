@@ -23,7 +23,7 @@
  * null for the day if nothing is reachable. No hardcoded fallback text.
  */
 
-import type { KnowledgeCandidate, KnowledgeSource } from "./types.js";
+import type { KnowledgeCandidate, KnowledgeSource, LearningDirective } from "./types.js";
 
 export interface WikiTopic {
   /** stable id — MUST stay constant across runs so per-instance dedup survives */
@@ -85,7 +85,12 @@ export class WikipediaKnowledgeSource implements KnowledgeSource {
     this.fetchImpl = config.fetchImpl ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
   }
 
-  async rankedCandidates(): Promise<KnowledgeCandidate[]> {
+  async rankedCandidates(directive?: LearningDirective): Promise<KnowledgeCandidate[]> {
+    // Purposeful focus: a model-given query → live Wikipedia search, not the
+    // curated topics. Real current intros, same shape.
+    if (directive?.query && directive.query.trim()) {
+      return this.fetchBySearch(directive.query.trim());
+    }
     if (this.mode === "random") {
       const c = await this.fetchRandom();
       return c ? [c] : [];
@@ -101,6 +106,37 @@ export class WikipediaKnowledgeSource implements KnowledgeSource {
     const sorted = out.sort((a, b) => a.rank - b.rank);
     this.cache = { at: Date.now(), items: sorted };
     return sorted;
+  }
+
+  /** Live Wikipedia search → top matches' current intros (purposeful focus). */
+  private async fetchBySearch(query: string): Promise<KnowledgeCandidate[]> {
+    const enc = encodeURIComponent(query);
+    const url =
+      `https://${this.lang}.wikipedia.org/w/api.php` +
+      `?action=query&list=search&srsearch=${enc}&srlimit=5&format=json`;
+    try {
+      const j = await this.getJson<{ query?: { search?: { title?: string }[] } }>(url);
+      const results = j?.query?.search ?? [];
+      const out: KnowledgeCandidate[] = [];
+      for (let i = 0; i < results.length; i++) {
+        const title = results[i].title;
+        if (!title) continue;
+        const s = await this.fetchSummary(title);
+        if (s) {
+          out.push({
+            id: `wiki-${this.slug(s.title ?? title)}`,
+            title: s.title ?? title,
+            summary: s.extract,
+            source: "Wikipedia",
+            sourceUrl: s.page,
+            rank: i + 1,
+          });
+        }
+      }
+      return out;
+    } catch {
+      return [];
+    }
   }
 
   private async fetchTopic(t: WikiTopic): Promise<KnowledgeCandidate | null> {

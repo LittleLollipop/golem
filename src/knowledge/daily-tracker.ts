@@ -1,41 +1,64 @@
 /**
  * DailyKnowledgeTracker — the L0.5 cadence + dedup ledger (req_l05_knowledge_trajectory).
  *
- * Per-instance (req_iso_learning_scoped): each 假人 has its own learned ledger.
- * - At most ONE new fact per calendar day ("每天学 1 条").
- * - Selection follows real ranking: top1 if not yet learned, else top2, ... ("top1
- *   学过则 top2"). The chosen fact records its selectionPath for auditability.
- * - Persisted as a JSON ledger per instance (lightweight dedup state — NOT memory
- *   content; the memory substrate remains axolotl. A production build can back
- *   this ledger with the graph, but the cadence/dedup logic is identical).
+ * Dual-track (req_l05 dual-track, polarization-resistant):
+ *   - Slot 1 RANDOM: a mechanical wiki-random fetch — NEVER reads the graph, NEVER
+ *     calls the model. Pure serendipity; guarantees breadth every day.
+ *   - Slot 2 PURPOSEFUL: model-driven (LearningPlanner reads the instance graph
+ *     and emits a LearningDirective). The attempt is recorded with a `status`
+ *     (learned/empty/junk/error) — per the user's abstract-status decision, a
+ *     failed/empty/junk attempt is a VALID recorded outcome and NEVER falls back
+ *     to default content.
+ *
+ * At most one attempt per slot per calendar day ("每天每条轨学/试 1 次"). Persisted
+ * as a JSON ledger per instance (lightweight dedup state — NOT memory content).
  *
  * `now` is injectable so tests can advance the calendar day deterministically.
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { KnowledgeSource, KnowledgeCandidate, LearnedFact } from "./types.js";
+import type {
+  KnowledgeSource,
+  KnowledgeCandidate,
+  LearnedFact,
+  LearningDirective,
+  LearnKind,
+  LearnStatus,
+} from "./types.js";
+import type { KnowledgeSourceRegistry } from "./registry.js";
+import type { LearningPlanner } from "./planner.js";
 
 export interface TrackerState {
   instanceId: string;
-  /** all learned fact ids — drives "top1 学过则 top2" dedup */
+  /** learned content ids — drives "top1 学过则 top2" dedup (learned slots only) */
   learnedIds: string[];
-  /** YYYY-MM-DD of the last learn */
+  /** YYYY-MM-DD of the last *any* learn (legacy gate; slots use the two below) */
   lastLearnedDate: string;
   /** recent learned facts (newest last), bounded window */
   trajectory: LearnedFact[];
+  /** slot gates — one attempt per slot per day */
+  randomDoneDate: string;
+  purposefulDoneDate: string;
 }
 
 export type NowFn = () => Date;
 
 const TRAJECTORY_WINDOW = 30;
 
+/** Light quality gate: drops ad/spam hosts, placeholder/empty text. Only decides
+ *  status (junk vs learned) — never rewrites content. */
+const JUNK_HOST =
+  /(doubleclick|adsystem|adservice|taboola|outbrain|amazon-adsystem|googleadservices|clickbank|shareasale|criteo|scorecardresearch)\.?/i;
+
 export class DailyKnowledgeTracker {
   private readonly cache = new Map<string, TrackerState>();
 
   constructor(
-    private readonly source: KnowledgeSource,
+    private readonly randomSource: KnowledgeSource,
+    private readonly sources: KnowledgeSourceRegistry,
     private readonly dir: string,
+    private readonly planner?: LearningPlanner,
     private readonly now: NowFn = () => new Date(),
   ) {}
 
@@ -51,10 +74,23 @@ export class DailyKnowledgeTracker {
   private load(instanceId: string): TrackerState {
     const hit = this.cache.get(instanceId);
     if (hit) return hit;
-    let st: TrackerState = { instanceId, learnedIds: [], lastLearnedDate: "", trajectory: [] };
+    const base: TrackerState = {
+      instanceId,
+      learnedIds: [],
+      lastLearnedDate: "",
+      trajectory: [],
+      randomDoneDate: "",
+      purposefulDoneDate: "",
+    };
+    let st: TrackerState = base;
     try {
       const raw = JSON.parse(fs.readFileSync(this.fileFor(instanceId), "utf8"));
-      st = { ...st, ...raw, trajectory: Array.isArray(raw.trajectory) ? raw.trajectory : [] };
+      st = {
+        ...base,
+        ...raw,
+        trajectory: Array.isArray(raw.trajectory) ? raw.trajectory : [],
+        learnedIds: Array.isArray(raw.learnedIds) ? raw.learnedIds : [],
+      };
     } catch {
       /* no record yet */
     }
@@ -72,47 +108,181 @@ export class DailyKnowledgeTracker {
     }
   }
 
-  /**
-   * Learn at most one new fact today. Returns it (with selectionPath + citation)
-   * or null if today's quota is already spent / nothing new remains.
-   */
-  async learnOne(instanceId: string): Promise<LearnedFact | null> {
-    const st = this.load(instanceId);
-    const today = this.today();
-    if (st.lastLearnedDate === today) return null; // already learned today
-
-    const candidates = await this.source.rankedCandidates();
-    let chosen: KnowledgeCandidate | null = null;
-    let skipped = 0;
-    for (const c of candidates) {
-      if (st.learnedIds.includes(c.id)) {
-        skipped++;
-        continue;
+  private qualityGate(cands: KnowledgeCandidate[]): KnowledgeCandidate[] {
+    return cands.filter((c) => {
+      try {
+        const u = new URL(c.sourceUrl);
+        if (JUNK_HOST.test(u.hostname)) return false;
+      } catch {
+        /* no url → keep, gate below still applies */
       }
-      chosen = c;
-      break;
-    }
-    if (!chosen) return null; // everything learned
+      if (!c.summary || c.summary.trim().length < 15) return false;
+      return true;
+    });
+  }
 
+  /**
+   * Ensure today's two learning slots are attempted for this instance. Returns
+   * the (up to two) records — each with a `status`. Random is mechanical;
+   * purposeful is model-driven (or a recorded empty/error when the planner/model
+   * is unavailable). Either slot may be absent if already done today.
+   */
+  async ensureToday(instanceId: string): Promise<{ random?: LearnedFact; purposeful?: LearnedFact }> {
+    const today = this.today();
+    const st = this.load(instanceId);
+    const out: { random?: LearnedFact; purposeful?: LearnedFact } = {};
+
+    // ── Slot 1: RANDOM (mechanical wiki-random; no model, no graph) ──
+    if (st.randomDoneDate !== today) {
+      const c = await this.randomSource.rankedCandidates();
+      const chosen = this.firstNotLearned(c, st.learnedIds);
+      if (chosen) {
+        out.random = this.persist(st, chosen, "random", "learned", today);
+      } else {
+        out.random = this.persistStatus(
+          st,
+          "random",
+          "empty",
+          today,
+          null,
+          "无新随机内容（源不可用或已全部学过）",
+        );
+      }
+      st.randomDoneDate = today;
+    }
+
+    // ── Slot 2: PURPOSEFUL (model-driven; abstract status, never fallback) ──
+    if (st.purposefulDoneDate !== today) {
+      const directive: LearningDirective | null = this.planner
+        ? await this.planner.plan(instanceId)
+        : null;
+      let rec: LearnedFact;
+      if (!directive) {
+        // 无模型规划 / 空图 / 规划失败 → 记 empty，不调源、不兜底默认内容
+        rec = this.persistStatus(
+          st,
+          "purposeful",
+          "empty",
+          today,
+          null,
+          this.planner ? "规划未产出指令（图库为空 / 模型无法判断）" : "无模型规划，目的轨跳过",
+        );
+      } else {
+        const backend = directive.source;
+        try {
+          const c = await this.sources.get(backend).rankedCandidates(directive);
+          const good = this.qualityGate(c);
+          const chosen = this.firstNotLearned(good, st.learnedIds);
+          if (chosen) {
+            rec = this.persist(st, chosen, "purposeful", "learned", today, directive);
+          } else if (c.length === 0) {
+            rec = this.persistStatus(st, "purposeful", "empty", today, directive, "检索返回 0 条");
+          } else {
+            rec = this.persistStatus(
+              st,
+              "purposeful",
+              "junk",
+              today,
+              directive,
+              "结果均疑似广告/垃圾，已丢弃",
+            );
+          }
+        } catch (e) {
+          rec = this.persistStatus(
+            st,
+            "purposeful",
+            "error",
+            today,
+            directive,
+            `源异常: ${(e as Error).message}`,
+          );
+        }
+      }
+      out.purposeful = rec;
+      st.purposefulDoneDate = today;
+    }
+
+    this.save(st);
+    return out;
+  }
+
+  private firstNotLearned(
+    cands: KnowledgeCandidate[],
+    learnedIds: string[],
+  ): KnowledgeCandidate | null {
+    for (const c of cands) {
+      if (!learnedIds.includes(c.id)) return c;
+    }
+    return null;
+  }
+
+  private persist(
+    st: TrackerState,
+    c: KnowledgeCandidate,
+    kind: LearnKind,
+    status: LearnStatus,
+    today: string,
+    directive?: LearningDirective,
+  ): LearnedFact {
     const learned: LearnedFact = {
-      id: chosen.id,
-      title: chosen.title,
-      summary: chosen.summary,
-      source: chosen.source,
-      sourceUrl: chosen.sourceUrl,
+      id: c.id,
+      title: c.title,
+      summary: c.summary,
+      source: c.source,
+      sourceUrl: c.sourceUrl,
       learnedAt: this.now().getTime(),
-      chosenRank: chosen.rank,
+      chosenRank: c.rank,
       selectionPath:
-        skipped > 0
-          ? `top${skipped} 已学过 → 选 rank ${chosen.rank}`
-          : `选 top1 (rank ${chosen.rank})`,
+        kind === "random"
+          ? `随机选 (rank ${c.rank}, 来源 ${c.source})`
+          : `模型规划: ${directive?.rationale ?? "-"} (source=${directive?.source ?? "?"}, query=${directive?.query ?? "-"})`,
+      kind,
+      status,
+      directive: directive
+        ? { source: directive.source, query: directive.query, rationale: directive.rationale }
+        : undefined,
     };
-    st.learnedIds.push(chosen.id);
+    st.learnedIds.push(c.id);
     st.lastLearnedDate = today;
     st.trajectory.push(learned);
-    if (st.trajectory.length > TRAJECTORY_WINDOW) st.trajectory = st.trajectory.slice(-TRAJECTORY_WINDOW);
-    this.save(st);
+    this.trim(st);
     return learned;
+  }
+
+  private persistStatus(
+    st: TrackerState,
+    kind: LearnKind,
+    status: LearnStatus,
+    today: string,
+    directive: LearningDirective | null,
+    note: string,
+  ): LearnedFact {
+    const learned: LearnedFact = {
+      id: `status-${kind}-${today}-${status}-${Math.random().toString(36).slice(2, 8)}`,
+      title: status === "empty" ? "(无内容)" : status === "junk" ? "(结果被过滤)" : "(源异常)",
+      summary: note,
+      source: directive?.source ?? (kind === "random" ? "Wikipedia" : "model-planned"),
+      sourceUrl: "",
+      learnedAt: this.now().getTime(),
+      chosenRank: 0,
+      selectionPath: kind === "random" ? `随机槽: ${status}` : `目的轨: ${status}`,
+      kind,
+      status,
+      directive: directive
+        ? { source: directive.source, query: directive.query, rationale: directive.rationale }
+        : undefined,
+      statusNote: note,
+    };
+    st.lastLearnedDate = today;
+    st.trajectory.push(learned);
+    this.trim(st);
+    return learned;
+  }
+
+  private trim(st: TrackerState): void {
+    if (st.trajectory.length > TRAJECTORY_WINDOW) {
+      st.trajectory = st.trajectory.slice(-TRAJECTORY_WINDOW);
+    }
   }
 
   /** Recent learned facts, newest first — used as drift seeds (L0.5). */

@@ -12,7 +12,7 @@
  * - fetchImpl is injectable for tests (no network).
  */
 
-import type { KnowledgeCandidate, KnowledgeMode, KnowledgeSource } from "./types.js";
+import type { KnowledgeCandidate, KnowledgeMode, KnowledgeSource, LearningDirective } from "./types.js";
 import { fetchJson, shuffle } from "./http.js";
 
 export interface SocialTrendingConfig {
@@ -52,7 +52,7 @@ export class SocialTrendingKnowledgeSource implements KnowledgeSource {
     this.fetchImpl = config.fetchImpl ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
   }
 
-  async rankedCandidates(): Promise<KnowledgeCandidate[]> {
+  async rankedCandidates(directive?: LearningDirective): Promise<KnowledgeCandidate[]> {
     const json = await fetchJson<{ hits?: HnHit[] }>(
       this.fetchImpl,
       this.endpoint,
@@ -62,6 +62,10 @@ export class SocialTrendingKnowledgeSource implements KnowledgeSource {
     if (!json?.hits) return [];
 
     let hits = json.hits.filter((h) => h.objectID && h.title);
+    // Purposeful focus: keyword filter (directive.query) on title.
+    const q = directive?.query?.trim().toLowerCase();
+    if (q) hits = hits.filter((h) => (h.title ?? "").toLowerCase().includes(q));
+    if (hits.length === 0) return [];
     if (this.mode === "random") hits = shuffle(hits);
 
     return hits.map((h, i) => {
