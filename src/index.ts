@@ -42,6 +42,7 @@ import { BackgroundTaskLog } from "./scheduler/background-log.js";
 import type { LlmClient } from "./llm/client.js";
 import { HttpLlmClient } from "./llm/client.js";
 import type { DshContext, UserMessage } from "./types.js";
+import { GolemRemoteService } from "./golem-remote.js";
 import * as fs from "node:fs";
 
 const PRESTEP_LOG = process.env.FAKEREN_PRESTEP_LOG ?? "/tmp/fakeren-prestep.log";
@@ -74,6 +75,15 @@ export function apply(ctx: DshContext, config: GolemConfig = {}): void {
   const dsh = new DshAdapter(ctx);
   const store = new AxolotlClient(config.sidecarUrl);
   const registry = new InstanceRegistry(store);
+
+  // ── 设置面板 remote 通道（D2a）：暴露「多假人实例」管理，供基座 client 经
+  //    ctx.remote.golem.* 调用。经 Cordis 容器登记到 ctx.get('golem')，dsh
+  //    gateway 的 source-mode 发现据此路由（零 dsh 核心改动）。服务自建
+  //    store/registry，但共享同一 axolotl sidecar（唯一真相源），状态一致。
+  void (ctx as unknown as { plugin: (s: unknown, c?: unknown) => unknown }).plugin(
+    GolemRemoteService,
+    { sidecarUrl: config.sidecarUrl },
+  );
   const reader = new MemoryReader(store);
   const consolidator = new Consolidator(store);
   const bus = new SignalBus();

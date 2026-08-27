@@ -2,6 +2,13 @@
 # Usage: pnpm dsh web --patch golem-cordis.yml --no-open
 # `golem` resolves via the symlink at node_modules/golem -> /Users/sai/WorkBuddy/dev/golem.
 
+# 客户端包 `golem-client-ui-config` 与本仓库 `client/ui-golem-config/` 对应，
+# 须在其 dsh 组装环境内可解析：在 dsh monorepo 的 node_modules 建软链
+#   node_modules/golem-client-ui-config -> /Users/sai/WorkBuddy/dev/golem/client/ui-golem-config
+# （与 `golem` 软链同理），并预构建其 `./client` bundle（见该子包 README/构建说明）。
+
 - insert:
     - id: golem
       name: 'golem'
+    - id: golem-ui-config
+      name: 'golem-client-ui-config'

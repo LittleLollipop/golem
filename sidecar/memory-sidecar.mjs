@@ -30,7 +30,6 @@ import * as nodePath from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = nodePath.dirname(fileURLToPath(import.meta.url));
-const PUBLIC_DIR = nodePath.resolve(__dirname, "..", "public");
 const DEFAULT_FILE = nodePath.join(__dirname, "config-default.json");
 
 const ACCESS_LOG = process.env.FAKEREN_SIDECAR_LOG ?? "/tmp/fakeren-sidecar.log";
@@ -188,19 +187,9 @@ const server = http.createServer(async (req, res) => {
   let payload = {};
 
   try {
-    // ── 配置页 (req_iso_config_page): 独立轻量 UI，不 patch dsh 核心 ──
-    if (req.method === "GET" && path === "/config") {
-      const htmlPath = nodePath.join(PUBLIC_DIR, "iso-config.html");
-      try {
-        const html = fs.readFileSync(htmlPath, "utf8");
-        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-        res.end(html);
-        return;
-      } catch {
-        status = 404;
-        payload = { error: "config page not found" };
-      }
-    } else if (req.method === "GET" && path === "/config/default") {
+    // ── 配置页已迁移进 dsh 设置面板（client/ui-golem-config），不再由 sidecar
+    //    提供独立 HTML。默认实例持久化（/config/default）仍是服务端存储后端，保留。
+    if (req.method === "GET" && path === "/config/default") {
       // 返回当前默认实例 id（会话未绑定时采用）。
       try {
         const raw = fs.readFileSync(DEFAULT_FILE, "utf8");

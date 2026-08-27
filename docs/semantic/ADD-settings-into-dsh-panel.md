@@ -11,7 +11,9 @@
 - **golem 是纯服务端 dsh 插件**：`package.json` 无 `"dsh": { "client" }` 声明；`inject = ["sessionPersistence","userQuestions"]`，`apply()` 只接服务端 seam（agent/pre-step、memory/axolotl、instance registry、signal bus）。
 - **dsh 前端机制（核实自 `/tmp/dsh-src` 源码）**：
   - 设置页扩展点是 **`settings.section`** slot（非 `settings.page`）。注册形态：`ctx.slots.inject('settings.section', () => ctx.slots.register({ name, id, order, label, children }, Comp))`。样例：`packages/client/ui-settings-general/src/client/index.ts:169`。
-  - 客户端插件数据通路是 **`@deepseek-ai/dsh-api-remotes/client` 的 typed `IApiClient`**（如 `IApiClient['sessions'].models` / `selectModel`）。样例：`packages/client/ui-model-selection`。
+  - **dsh 有两条 client→server 类型化通道（关键更正）**：
+    - 通道① `connection.api`（类型 `IApiClient`，含 sessions/settings/credentials/llm…）：**硬编码在 `@deepseek-ai/dsh-host-apiproxy`，不可插件扩展**——加 `IApiClient['golem']` 必须改 dsh 核心包，是硬阻塞。
+    - 通道② `ctx.remote`（类型 `TypertClientRemote`）：**可插件扩展**。服务端 `TypertRemoteService(ctx,'golem')` + `@Remote()` 方法，客户端 `ctx.remote.$mount(contribution)` 后 surfaced 为 `ctx.remote.golem.*`。**这才是插件暴露 client 可调用服务的正统扩展点，零核心改动。**
   - 客户端插件靠 `package.json` 的 `"dsh": { "client": { inject:[...], platform:"web" } }` 声明注入 web 前端。样例：`packages/client/ui-model-selection/package.json`。
   - dsh web 通过 `pnpm dsh web --patch <yml>` 组装：`/tmp/dsh-src/golem-cordis.yml` 仅做 `- insert: { id: golem, name: 'golem' }`。
 
@@ -40,8 +42,7 @@
 
 ### D2：客户端怎么拿后端数据
 
-- **D2a｜经 dsh seam / remote（正统）**：golem 服务端插件在 `ctx` 暴露一个 service（如 `ctx.golem.instances`：`list / create / getMeta / setMeta / getDefault / setDefault`），客户端经 typed remote 调用。最贴合你原话"对齐 dsh 记忆/runtime seam、不再依赖 sidecar 平行 REST"。
-  - ❌ 需扩展 `dsh-api-remotes` 增加 `golem` 名空间（属扩展 dsh 包，需确认契约扩展机制 —— **§5 开放项**）。
+- **D2a｜经 dsh seam / remote（正统，已查实走 `ctx.remote.golem`）**：golem 服务端插件注册一个 `TypertRemoteService(ctx,'golem')`，用 `@Remote()` 暴露 `listInstances / createInstance / getInstanceMeta / setInstanceMeta / getDefaultInstance / setDefaultInstance`；客户端经 `ctx.remote.golem.*` typed 调用。最贴合你原话"对齐 dsh 记忆/runtime seam、不再依赖 sidecar 平行 REST"。**不走 `IApiClient`（不可扩展），走可扩展的 `ctx.remote` 通道——零核心改动。**
 - **D2b｜客户端直接 fetch 假人 sidecar REST**：把 `server.py` 缺失的配置接口补齐全后，配置 UI 仍调 sidecar 自有 REST。
   - ✅ 改动小、不碰 `dsh-api-remotes`。
   - ❌ 配置 UI 仍依赖"sidecar 平行 REST"这条契约，只是把它在真后端补齐，未从根上消除平行契约。
@@ -54,10 +55,10 @@
 
 ```
 [server plugin]  AxolotlClient + InstanceRegistry
-        │  暴露 instances service（D2a）
+        │  注册 TypertRemoteService(ctx,'golem')（D2a，@Remote 暴露 6 方法）
         ▼
-  ctx.golem.instances  (新 service / remote 名空间)
-        │  typed remote（IApiClient['golem']）
+  ctx.remote.golem.*  (可扩展 remote 名空间，零核心改动)
+        │  typed remote（ctx.remote.golem.listInstances ...）
         ▼
 [client package ui-golem-config]  注册 settings.section(id:'golem')
         │  渲染
@@ -73,22 +74,22 @@
 
 | 动作 | 路径 | 说明 |
 |---|---|---|
-| 新增 | `client/ui-golem-config/package.json` | 含 `"dsh": { "client": { inject:[...], platform:"web" } }` |
-| 新增 | `client/ui-golem-config/src/index.ts` | 注册 `settings.section(id:'golem', label:'假人')` |
-| 新增 | `client/ui-golem-config/src/GolemSettings.tsx` | 复用现有交互（列表/新建/设 persona/设默认） |
-| 新增 | `src/` instances service | 基于现有 `AxolotlClient`+`InstanceRegistry` 暴露 list/create/getMeta/setMeta/getDefault/setDefault |
-| 改 | `golem-cordis.yml` | 增加插入 client 包（D1b）或保持 monorepo 内（D1a） |
-| 改 | `dsh-api-remotes`（D2a） | 增加 `golem` 名空间契约 |
-| 退役 | `public/iso-config.html` | 独立页删除 |
-| 退役 | sidecar 配置 REST 路由 | demo `memory-sidecar.mjs` 的 `/config`、`/instances/meta`、`PUT /{id}/meta` 等（server.py 侧 D2b 才需补，D2a 则一并退役） |
+| 新增 | `client/ui-golem-config/package.json` | 真实包名 + `exports["./client"]` 预构建 bundle + `"dsh":{client:{platform:"web"}}` |
+| 新增 | `client/ui-golem-config/src/index.ts` | 注册 `settings.section(id:'golem',label:'假人')` + `ctx.remote.$mount(golemContribution)` |
+| 新增 | `client/ui-golem-config/src/GolemSettings.tsx` | 复用现有交互（列表/新建/设 persona/设默认），数据走 `ctx.remote.golem.*` |
+| 新增 | `src/golem-remote.ts` | `GolemRemoteService extends TypertRemoteService(ctx,'golem')`，`@Remote()` 暴露 6 方法；在 `apply` 注册 |
+| 改 | `golem-cordis.yml` | **显式加一行** client 包（发现机制是 patch yml 名单，非自动扫描） |
+| 改 | `client 构建` | 借 dsh 的 `node_modules` 解析 `@deepseek-ai/dsh-*` 客户端依赖，预构建 `./client` bundle |
+| 退役 | `public/iso-config.html` | 独立页删除（sidecar `GET /config` 页面服务路由一并移除） |
+| **保留** | sidecar 配置/实例 REST 路由 | `memory-sidecar.mjs` 的 `/config/default`、`/instance/create`、`/instances/meta`、`PUT /{id}/meta` **保留**——它们现在是服务端 `GolemRemoteService → GolemInstanceApi → AxolotlClient` 的存储后端（维度 I 唯一真相源），并非"平行 REST"。D2a 消除的是"客户端平行直连 sidecar"这层契约，而非 sidecar 本身。原 §4「退役 sidecar REST」判断有误，更正于此。 |
 | 回流 | 图库 | `req_iso_config_page → serves → fn_golem_settings_client`；新增 `dec_settings_in_base_panel`；边连到 `dec_isolation_per_instance` |
 
 ---
 
 ## 5. 风险 / 开放项（动手前必查）
 
-1. **跨仓库 client 构建可行性（D1b 前提）**：dsh web 构建能否解析 `node_modules/golem` 软链下的 `client/*` 子包并打进 bundle。需实测（或确认 dsh 的 client 包发现机制）。
-2. **`dsh-api-remotes` 扩展机制（D2a 前提）**：本 checkout 的 `/tmp/dsh-src` 未含该包源码，无法直接读契约。需在 dsh 源码/发布包内确认如何新增一个 `golem` 名空间（declare-merge `IApiClient`？还是独立 exported client？）。
+1. **跨仓库 client 构建可行性（D1b，已查实）**：dsh web 构建**不自动扫描** node_modules 或 `packages/client/*`；它枚举 patch yml 的 loader 条目（每条需 `dsh.client.platform:web` + 预构建 `exports["./client"]` bundle）。所以 D1b 可行但须：① client 包是真实 npm 包（有 name + `./client` 导出 + 预构建产物）；② 在 `golem-cordis.yml` **显式加一行**该 client 包；③ 构建时借 dsh 的 `node_modules` 解析 `@deepseek-ai/dsh-*` 客户端依赖。原始设想「放个 raw TS 子目录就自动被拾取」不成立。
+2. **`dsh-api-remotes` 扩展机制（D2a，已查实·关键更正）**：`IApiClient`（`connection.api`）**硬编码在 `@deepseek-ai/dsh-host-apiproxy`，不可插件扩展**——加 `IApiClient['golem']` 必须改 dsh 核心，硬阻塞。但另有可扩展通道 **`ctx.remote`**（Typert remote）：服务端 `TypertRemoteService(ctx,'golem')`+`@Remote()`，客户端 `ctx.remote.$mount` 后得 `ctx.remote.golem.*`，**零核心改动**。→ D2a 落地机制改为 `ctx.remote.golem`，非 `IApiClient['golem']`。
 3. **设置面板上下文适配**：`settings.section` 组件拿到的是 dsh runtime 上下文（session/workspace observable），与当前独立页"裸 fetch"不同，组件需适配数据获取与提交方式。
 4. **与"不 patch dsh 核心"张力的再平衡**：D1b+D2a 最贴合初衷，但都要求先验证 dsh 侧的扩展点确实可用、不改动 dsh 核心包。若验证失败，退路是 D1a/D2b（接受局部 patch / 平行 REST 补齐）。
 
@@ -108,6 +109,14 @@
 ## 7. 已拍板 / 待你确认
 
 - ✅ **D1 = D1b**：客户端包放进 golem 仓库（不 patch dsh 核心）。
-- ✅ **D2 = D2a**：数据走 dsh seam / typed remote（根除平行 REST）。
-- ⏳ **待查实（动码前）**：§5-1 跨仓库 client 构建可行性、§5-2 `dsh-api-remotes` 扩展机制。
-- ⏳ **新议题**：项目改名（见下方对话）——`golem` 半中半英，改名后将统一刷新本文档中的 `golem` 标识符与 `golem-cordis.yml` 的 `id`。
+- ✅ **D2 = D2a（机制更正为 `ctx.remote.golem`）**：数据走可扩展的 dsh remote 通道（根除平行 REST），**不走 `IApiClient`（不可扩展、需改核心）**。
+- ✅ **已查实（2026-08-27 探 dsh 源码）**：§5-1 跨仓库 client 构建可行但须显式 patch yml 行+预构建 `./client`+借 dsh node_modules 解析；§5-2 `IApiClient` 不可扩展，改用 `ctx.remote.golem`。
+- ✅ 项目改名已完成（golem），本文档标识符已统一。
+
+## 8. 查实后更正摘要（2026-08-27 探 /tmp/dsh-src 源码）
+- **更正 1（D2a 机制）**：原设想 `IApiClient['golem']` 不可行（硬编码在 dsh-host-apiproxy）。改用 `ctx.remote.golem`（Typert remote，可扩展、零核心改动）。
+- **更正 2（D1b 发现机制）**：dsh web 不自动扫描 node_modules/工作区；client 包须真实 npm 包 + 预构建 `exports["./client"]` + patch yml **显式加行**。
+- **不变的目标**：配置页进基座设置面板（settings.section）、数据走 dsh seam/remote（根除 sidecar 平行 REST）、不 patch dsh 核心。D1b+D2a 在更正后仍可达成。
+
+## 9. 实现期更正（2026-08-27 落地时）
+- **更正 3（sidecar REST 去留）**：原 §4 计划「退役 sidecar 配置 REST 路由」**不成立**。D2a 落地后，服务端 `GolemRemoteService` 经 `GolemInstanceApi`/`InstanceRegistry` 调用 `AxolotlClient`，**仍走同一套 sidecar REST**（`/instance/create`、`/{id}/meta`、`/instances/meta`、`/config/default`）作为维度 I 存储后端。所以退役的只有**客户端平行直连的那层**：`public/iso-config.html` + sidecar `GET /config` 页面路由。sidecar REST 本身保留，且不再有任何客户端直连它（平行契约已根除）。
