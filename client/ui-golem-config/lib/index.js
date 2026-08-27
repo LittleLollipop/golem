@@ -1,2 +1,5 @@
-import { n as inject, t as apply } from "./src-z9FHMF-1.js";
-export { apply, inject };
+//#region src/index.ts
+const name = "golem-client-ui-config";
+function apply() {}
+//#endregion
+export { apply, name };
