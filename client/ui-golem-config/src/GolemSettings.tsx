@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react'
-import type { GolemApi, InstanceMeta } from './types.ts'
+import type { InstanceMeta } from './types.ts'
+import type { GolemApi } from './golem-api.ts'
 
 /**
  * dsh 设置面板里的「假人」section 内容。

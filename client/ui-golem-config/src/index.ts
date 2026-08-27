@@ -1,5 +1,9 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TypertRemoteNamespaceMap } from '@deepseek-ai/dsh-typert-protocol'
+// 副作用类型导入：把 `settings.section` 这一 list-slot 的 SlotMap 声明
+// （含 owner 的 `close` prop 与 list 形参约束）并入本包的 `ctx.slots` 面，
+// 否则 `ctx.slots.inject('settings.section', ...)` 会落到默认 `"root"` 重载而报错。
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { golemRemoteContribution } from './golem-remote-contribution.ts'
 import { createGolemApi } from './golem-api.ts'
 import { GolemSettings } from './GolemSettings.tsx'

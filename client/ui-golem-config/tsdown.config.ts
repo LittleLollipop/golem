@@ -12,4 +12,7 @@ export default defineConfig({
   dts: true,
   clean: true,
   target: 'es2022',
+  // 该包 `"type": "module"，dsh web 组装按 package.json `exports["./client"]`
+  // (./lib/client.js) 消费产物，故强制输出 .js / .d.ts（否则 esm 默认 .mjs）。
+  outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
 })
