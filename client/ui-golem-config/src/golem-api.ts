@@ -12,7 +12,7 @@ export interface GolemApi {
   getInstanceMeta(id: string): Promise<InstanceMeta | null>
   setInstanceMeta(id: string, patch: Partial<InstanceMeta>): Promise<InstanceMeta>
   getDefaultInstance(): Promise<string | null>
-  setDefaultInstance(id: string): Promise<void>
+  setDefaultInstance(id: string): Promise<null>
 }
 
 /**

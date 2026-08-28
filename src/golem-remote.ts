@@ -88,7 +88,7 @@ export class GolemRemoteService extends TypertRemoteService {
   }
 
   @Remote("setDefaultInstance")
-  setDefaultInstance(id: InstanceId): Promise<RemoteResult<void>> {
+  setDefaultInstance(id: InstanceId): Promise<RemoteResult<null>> {
     return this.api.setDefaultInstance(id).then(
       () => ok(null),
       (error) =>
