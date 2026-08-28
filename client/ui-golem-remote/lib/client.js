@@ -1436,20 +1436,6 @@ window.__ModuleLoader__.load({
 				return payload;
 			};
 		});
-		const $ZodVoid = /*@__PURE__*/ $constructor("$ZodVoid", (inst, def) => {
-			$ZodType.init(inst, def);
-			inst._zod.parse = (payload, _ctx) => {
-				const input = payload.value;
-				if (typeof input === "undefined") return payload;
-				payload.issues.push({
-					expected: "void",
-					code: "invalid_type",
-					input,
-					inst
-				});
-				return payload;
-			};
-		});
 		function handleArrayResult(result, final, index) {
 			if (result.issues.length) final.issues.push(...prefixIssues(index, result.issues));
 			final.value[index] = result.value;
@@ -2502,13 +2488,6 @@ window.__ModuleLoader__.load({
 			});
 		}
 		// @__NO_SIDE_EFFECTS__
-		function _void$1(Class, params) {
-			return new Class({
-				type: "void",
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
 		function _lt(value, params) {
 			return new $ZodCheckLessThan({
 				check: "less_than",
@@ -3049,9 +3028,6 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				json.nullable = true;
 				json.enum = [null];
 			} else json.type = "null";
-		};
-		const voidProcessor = (_schema, ctx, _json, _params) => {
-			if (ctx.unrepresentable === "throw") throw new Error("Void cannot be represented in JSON Schema");
 		};
 		const neverProcessor = (_schema, _ctx, json, _params) => {
 			json.not = {};
@@ -3726,14 +3702,6 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		function never(params) {
 			return /* @__PURE__ */ _never(ZodNever, params);
 		}
-		const ZodVoid = /*@__PURE__*/ $constructor("ZodVoid", (inst, def) => {
-			$ZodVoid.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => voidProcessor(inst, ctx, json, params);
-		});
-		function _void(params) {
-			return /* @__PURE__ */ _void$1(ZodVoid, params);
-		}
 		const ZodArray = /*@__PURE__*/ $constructor("ZodArray", (inst, def) => {
 			$ZodArray.init(inst, def);
 			ZodType.init(inst, def);
@@ -4227,7 +4195,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						source: "json",
 						codec: strict("golem/types#InstanceId", string())
 					}],
-					result: strict("golem/types#void", remoteResult(_void()))
+					result: strict("golem/types#null", remoteResult(_null()))
 				}
 			]
 		};

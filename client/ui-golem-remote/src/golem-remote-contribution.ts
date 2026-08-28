@@ -134,7 +134,7 @@ const descriptors: readonly InvocationDescriptor[] = [
     parameters: [
       { name: 'id', wire: 'id', source: 'json', codec: strict('golem/types#InstanceId', z.string()) },
     ],
-    result: strict('golem/types#void', remoteResult(z.void())),
+    result: strict('golem/types#null', remoteResult(z.null())),
   },
 ]
 
