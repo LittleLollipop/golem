@@ -1,55 +1,141 @@
-# 假人（Fake Human）
+# 假人（golem）
 
-> 一个运行于 DeepSeek Harness（dsh）底座上的 agent：通过「环境态 / 潜意识层」模拟人类被每时每刻环境潜移默化影响的认知，以产出更具「人感」的输出。
+> 一个运行于 [DeepSeek Harness（dsh）](https://github.com/deepseek-ai/dsh) 底座上的 agent：通过「环境态 / 潜意识层」模拟人类被每时每刻环境潜移默化影响的认知，以产出更具"人感"的输出。
+>
+> ⚠️ **实验性 / 概念验证**：项目处于概念阶段，依赖的 dsh 仍为 dev-preview（有 breaking changes 警告）。本文档描述的是设计意图与当前可运行形态，不等同于稳定产品。
 
-## 终局定位（2026-08-23 画像确认）
-假人不是"小说写作插件"，而是朝**真正的电脑助手**方向发展的日常 agent —— 一个有环境态、
-会漂移、有个体历史的助手。当下第一用户 = Sai 本人（实验台 + 机制评审关），目标群体 = 大众。
-本轮只需个人 macOS 跑通，但**单用户假设不得写进核心**。
+---
 
-## 一句话定位
-人类文本里那种"活气"——不连贯、略微跑偏、被无关经历污染出的新奇联想——来自潜意识层面的环境影响（associative priming + situated cognition）。当前 agent 的输入是 **relevance-gated（相关性门控）** 的：只有显式对话 + 目标导向检索能进 prompt，于是输出是 relevance-shaped 的、太切题、太服务目标，恰好读作"AI"。假人试图在运行时底座上，补一层 **非目标导向、概率性、缓慢漂移** 的环境态 priming 通道。
+## 为什么需要"假人"：一个最小例子
 
-## 三层环境影响框架（本项目的核心认知模型）
-- **L0 个体潜意识层**：来自 agent 真实发生过的事（真实对话 / 决策 / 用户真实上下文 / 真实动作后果），
-  **并接入真实感官（摄像头 / 麦克风）**——2026-08-23 决策，信号源做成可扩展插件接口。
-  机器只负责连续性编织，绝不 fabricated 种子。偶然性（contingency）是人感的真 ingredient，作者意图（authorial intent）可被嗅出 → 逃。
-- **L0.5 知识轨迹层**：每天主动学 1 个新知识，内容来自 Google / Wiki 等的真实排名（top1 学过了就学 top2）。慢个体节奏、非 trending、非文化属性；学习史本身成为选择器。每条习得带真实来源引用 + 选择路径（可审计 = 非 fabricated 的硬保证）。
-- **L1 用户处境理解层**（2026-08-23 **重定义**）：不再是"文化在场调味"，而是帮 agent 理解
-  **用户当前诉求与所处状况**（今日世界发生了什么、可能如何影响用户）。可与 L0/L0.5 走不同方向，
-  **允许被有意识使用** → 由此引出三通道架构（漂移 / 处境 / 图检索，互不借道）。
+用户问：**"周末想出去走走，附近有啥推荐？"**
 
-## 通道架构（由 L1 重定义引出）
+**普通 agent（relevance-gated）**：
+
+> "您附近有 XX 公园（评分 4.6）、XX 美术馆（当前有印象派特展）。需要考虑亲子 / 独行 / 天气吗？我可以帮您规划路线。"
+
+正确、切题、服务目标、零冗余——**这正是"AI 声纹"**。
+
+**假人（带环境态渗漏）**：
+
+> "嗯……我上周扭了腰，爬楼还隐隐的。不过昨天刷到说西郊那片芦苇正黄，想着要不骑车去吹风发呆就行，不爬了。"
+
+后者多出的"活气"来自：(1) 一段与问题弱相关但**真实发生过**的身体状况（L0）；(2) 一条**今天偶然看到、并非为回答而检索**的信息（L0.5）；(3) 二者非目标导向地污染了回答，产生了 baseline 绝不会给的"不爬了"转向。
+
+**这不是检索不到相关信息，而是根本没有通道去承载那些"不相关但塑造了你"的东西。** 详见 [`docs/ambient-leakage-framework.md`](docs/ambient-leakage-framework.md)。
+
+---
+
+## 它是什么
+
+假人是一个 **dsh 插件**，在运行时底座上补一层 **非目标导向、概率性、缓慢漂移的环境态 priming 通道**。核心主张：人类文本里的"活气"来自潜意识层面的环境影响（联想启动 + 情境认知），而当前 agent 的输入是相关性门控的，输出因此太切题、太服务目标，恰好读作"AI"。
+
+终局定位（2026-08-23 画像确认）：不是"小说写作插件"，而是朝**真正的电脑助手**方向发展的日常 agent——一个有环境态、会漂移、有个体历史的助手。当前第一用户 = 作者本人（实验台 + 机制评审关），目标群体 = 大众。
+
+---
+
+## 环境态渗漏框架（核心认知模型）
+
+| 层 | 名称 | 种子来源 | 关键约束 |
+|---|---|---|---|
+| **L0** | 个体潜意识层 | agent 真实发生过的事（对话 / 决策 / 用户上下文 / 动作后果）+ 真实感官（摄像头 / 麦克风） | 机器只编织连续性，绝不 fabricated 种子 |
+| **L0.5** | 知识轨迹层 | 每天按真实排名（Google / Wiki top1→top2）学 1 个新知识 | 慢个体节奏、非 trending；学习史即选择器 |
+| **L1** | 用户处境理解层 | 理解用户当前诉求与所处状况 | 可与 L0/L0.5 反向，允许被有意识使用 |
+
+三条通道互不借道：
+
 | 通道 | 成员 | 目标导向 | 用途 |
 |---|---|---|---|
-| 漂移通道 | L0 + L0.5 | 否（漏而非查） | 人感：偶然、有来路的跨域污染 |
-| 处境通道 | L1 | 可以是 | 共情/理解：用户此刻面对什么 |
-| 图检索通道 | recall | 是 | 事实：目标导向图检索（非向量 RAG） |
+| **漂移通道** | L0 + L0.5 | 否（漏而非查） | 人感：偶然、有来路的跨域污染 |
+| **处境通道** | L1 | 可以是 | 共情 / 理解 |
+| **图检索通道** | recall | 是 | 事实：目标导向图检索（非向量 RAG） |
 
-**漏出双层控制**：执行前按任务类型分级（对话 / 创作 / 构思 = 强漏，事实查询 = 弱漏，执行命令 = 零漏，fail-safe 朝严谨）；执行时再后筛——系统可产出「带环境态」与「纯净」两版候选，按是否执行命令 / 修改代码偏纯净，歧义时交用户选。
+**隔离不变量**：漂移通道的环境态分布必须与用户目标正交（`Ω ⟂ goal`）——一旦为"相关"而漏，立即退化为检索，人感死。完整形式化、机制、验证协议见 [`docs/ambient-leakage-framework.md`](docs/ambient-leakage-framework.md)。
 
-**信号源边界下放扩展组件**：宿主（核心）对信息模态与语义保持不可知，只提供「可输入信息」的通用插件接口与「开关 / 本地存储 / 关停」管控；具体输入什么、用到什么程度（如是否做语音转录）由每个扩展组件自行决定。这样未来可加任意感官（视觉 / 声觉 / 味觉 / 监听）而不改核心。
+---
 
-## 底座决策
-- **DeepSeek Harness（dsh）**，2026-08-13 开源，MIT，基于 Cordis「一切皆插件 / 无特权核心」。
-- 选它的理由（相对 OpenAI Codex Harness / Hermes / Letta）：
-  1. 环境态层可作 **peer 插件**注入，无需 patch 核心（Seam 抽象：服务定义 / 提供者 / 消费者）。
-  2. **会话 = append-only 事件日志**（可回放 / 分叉，强制「model-visible 必 logged」）→ 直接充当 L0 的真实史基质，且满足"可审计 = 非 fabricated"纪律。
-  3. 含 **loop / scheduling / orchestration** 插件 → 后台 idle 潜意识线程（L0.5 / L1 / L0 漂移都能挂后台）。
-  4. **本地优先** → 环境态是个人隐私层，留本地正好。
-- 关键提醒：dsh 原生是**编码 agent harness**，本工程是非编码 agent，须复用其 runtime 骨架（持久会话 / 插件注入 / 后台调度）而**弃用编码工具 bundle**（terminal / editor）。仍为 dev preview（有 breaking changes 警告）——对本项目的探索期可接受。
+## 架构
 
-## 关键纪律（从会话收敛，不可违背）
-1. **非目标导向扩散，不是检索**：环境态信息必须"漏"出来，不能"为相关而查"。一旦目标导向，退化为加戏的图检索，人感死。
-2. **L0 种子须真实史基质，禁 fabricated**：凡机器制造的内容都带作者意图，coherence 救不了，只会更像高级 AI 感 / 换风格。
-3. **可审计 = 非 fabricated**：每条环境态种子带来源引用 + 选择路径，可指回具体真实事件 / Wiki 条目。
-4. **调 leak rate**：注入太多 = 噪声干扰，太少 = 无效。需 spike 调。
-5. **拥抱排名偏差，勿"纠正"**：Wiki / Google 排名的流行度 / SEO 偏差是真实偶然性，纠正会 reintroduce 作者意图。
+```
+dsh (Cordis 插件底座)
+├── 宿主插件 golem                # host：实例寄存器 + remote 服务（@Remote）
+│   ├── registry/instance-registry   # 多实例（假人）管理
+│   ├── memory/                      # per-instance 图记忆（axolotl-backed）
+│   ├── ambient/                     # L0/L0.5 环境态捕获与缓冲
+│   ├── knowledge/                   # L0.5 知识源（RSS / Wiki / 社媒趋势 / 静态）
+│   ├── agent/                       # golem-agent + 评分 / 溯源
+│   ├── leak/                        # 漏出双层控制（前分级 + 后双候选）
+│   └── channels/                    # 漂移 / 处境 / 图检索 三通道
+├── 客户端桥 golem-client-remote  # browser half：专职 $mount 建立 remote.golem
+└── 客户端面板 golem-client-ui-config  # settings.section「假人」：实例列表 + 表单
+```
+
+- **多实例隔离**：每个"假人"持有独立的、随时间各自漂移的环境态与记忆（per-instance 图记忆）。
+- **正统扩展点**：UI 经 `ctx.remote.golem.*` 与宿主通信，不另起平行 REST；设置面板迁入 dsh 基座「假人」section。
+- **信号源边界下放**：宿主对信息模态 / 语义不可知，只提供「可输入信息」的通用插件接口与开关 / 本地存储 / 关停管控；具体输入由扩展组件决定。
+
+---
+
+## 设计纪律（红线）
+
+1. **非目标导向扩散，不是检索**——环境态必须"漏"出来，不能"为相关而查"。
+2. **L0 种子须真实史基质，禁 fabricated**——凡机器制造都带作者意图，coherence 救不了。
+3. **可审计 = 非 fabricated**——每条环境态种子带来源引用 + 选择路径，可指回具体真实事件 / Wiki 条目。
+4. **调 leak rate**——注入太多 = 噪声干扰，太少 = 无效，需 spike 调。
+5. **拥抱排名偏差，勿"纠正"**——排名的流行度 / SEO 偏差是真实偶然性，纠正会 reintroduce 作者意图。
+
+---
+
+## 快速上手（实验性）
+
+> 需要先从源码构建 dsh（dev-preview）。假人是 dsh 的插件，通过 cordis patch 叠加加载，不是独立二进制。
+
+```bash
+# 1. 取得 dsh 源码并装好依赖（见 dsh 仓库）
+git clone https://github.com/deepseek-ai/dsh && cd dsh && pnpm install
+
+# 2. 将 golem 及其两个客户端包软链进 dsh 的 node_modules
+ln -sfn /path/to/golem            dsh/node_modules/golem
+ln -sfn /path/to/golem/client/ui-golem-config  dsh/node_modules/golem-client-ui-config
+ln -sfn /path/to/golem/client/ui-golem-remote  dsh/node_modules/golem-client-remote
+
+# 3. 预构建两个客户端 bundle（用 dsh 自带的 tsdown）
+cd /path/to/golem/client/ui-golem-config && tsdown
+cd /path/to/golem/client/ui-golem-remote && tsdown
+
+# 4. 启动记忆 sidecar + dsh web（叠加 golem-cordis.yml 补丁）
+node /path/to/golem/sidecar/memory-sidecar.mjs &
+pnpm dsh web --patch /path/to/golem/golem-cordis.yml --no-open --port 3080
+```
+
+打开 `http://127.0.0.1:3080` → 设置 → **假人**，即可看到实例列表与「新建假人」表单，增 / 删 / 设默认 / 改 persona 均通。
+
+加载顺序由 `golem-cordis.yml` 保证：bridge（`golem-client-remote`）先于 UI（`golem-client-ui-config`）加载，由前者先 `$mount` 建立 `remote.golem` 命名空间，后者 inject 消费，避免「自 mount → pending」死锁。
+
+---
 
 ## 当前状态
-- 概念阶段。本工程**不接入任何现有项目**（lobster-memory / axolotl 只作本项目的 dev-governance 语义图谱工具，不作运行时 substrate）。
-- 开发流程由 **/se-semantic-graph** 四阶段管控：画像 → 需求 → 架构 → 开发 + 实时录入。
 
-## 目录约定
-- 源码 / 文档随开发补全。
-- 语义图谱：`SE_SEMANTIC_DIR` 指向本项目专属目录（每项目一个，不与 lobster-memory 共用图文件）。
+- **可运行**：多实例「假人」设置面板已闭环（增删 / 设默认 / 改 persona 经 `ctx.remote.golem.*` 全通）；环境态捕获、图记忆、漏出双候选控制已实现。
+- **概念验证**：框架的"人感 lift"尚未做规模化盲测 A/B（方法论见框架文档 §10）；leak rate 最佳区间、多用户 + 隐私监管部署仍待验证。
+- **底座依赖**：dsh 仍 dev-preview，API 可能变动；本项目随其迭代。
+
+---
+
+## 路线图
+
+- [ ] 盲测 A/B 验证"人感 lift"（框架文档 §10 协议）
+- [ ] leak rate 系统化 spike
+- [ ] L0 感官（摄像头 / 麦克风）作为可插拔信号源接入
+- [ ] per-instance 漂移记忆的多用户隔离与隐私边界
+- [ ] 演示素材：baseline vs 假人 同题 side-by-side 集
+
+---
+
+## 许可与引用
+
+- **License**：MIT。
+- **归属**：框架论述 [`docs/ambient-leakage-framework.md`](docs/ambient-leakage-framework.md) 是本仓库主张的权威来源与署名锚点；本仓库代码是该论述的一种实现。欢迎 fork 与二次实现，但请保留对原框架的署名、引用指向该文档。
+- **引用**：
+
+> Sai (LittleLollipop). 环境态渗漏：一种让 agent 产出"人感"的非目标导向 priming 框架. 2026-08-28.

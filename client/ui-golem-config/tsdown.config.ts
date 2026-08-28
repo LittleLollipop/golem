@@ -35,7 +35,18 @@ export default defineConfig([
     target: 'es2022',
     dts: true,
     clean: false,
-    external: ['react'],
+    // 依赖解析策略（对齐 dsh 内置 client 包的 clientConfig）：
+    //  - 仅 `react` 顶层 external：本包 package.json 不在 deps/peerDeps 声明
+    //    react（已移除以免 tsdown 默认把整个 `react` 含子路径 external），由
+    //    dsh 浏览器模块表运行时 seed 单一 react 实例（hooks context 与框架一致）。
+    //  - react/jsx-runtime 与 zod 一律 INLINE 打进 bundle：dsh 浏览器模块表只
+    //    seed `react` 顶层，不含 `react/jsx-runtime` 子路径；若把 jsx-runtime
+    //    external，运行时 `require("react/jsx-runtime")` 落空 → GolemSettings
+    //    首渲染即崩溃、内容区空白。neverBundle 精确只 external 顶层 `react`，
+    //    子路径与第三方包全部 inline（与 dsh 内置包 behavior 一致）。
+    deps: {
+      neverBundle: (specifier: string) => specifier === 'react',
+    },
     define: {
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
     },

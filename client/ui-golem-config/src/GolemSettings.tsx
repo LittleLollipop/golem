@@ -56,6 +56,7 @@ export function GolemSettings({ api }: GolemSettingsProps) {
       setMetas(list)
       setDefaultId(def)
     } catch (e) {
+      console.error('[GolemSettings] refresh failed:', e)
       setCreateHint('加载失败: ' + String(e))
     } finally {
       setBusy(false)

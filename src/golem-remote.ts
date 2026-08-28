@@ -10,9 +10,14 @@
  * 本类只做 RPC 表面（@Remote 包装），业务逻辑委托 GolemInstanceApi。
  * 注册方式（与 dsh 原生插件一致）：`ctx.plugin(GolemRemoteService, config)`，
  * 由 Cordis 容器把实例登记到 `ctx.get('golem')`，gateway 据此发现。
+ *
+ * ⚠️ 返回值约定（与 dsh 原生 remote 一致，参照 message-feedback）：
+ * `@Remote` 方法必须返回 `RemoteResult<T>` 联合体（`{ok:true,value}` /
+ * `{ok:false,error}`），gateway 不做二次包裹，线上结果即该联合体；
+ * 客户端贡献描述符用 strict zod codec 解析它，再由 `createGolemApi` 解包。
  */
 
-import { TypertRemoteService, Remote } from "@deepseek-ai/dsh-typert-protocol";
+import { TypertRemoteService, Remote, type RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import { GolemInstanceApi } from "./golem-instance-api.js";
 import { AxolotlClient } from "./memory/axolotl-client.js";
 import { InstanceRegistry } from "./registry/instance-registry.js";
@@ -29,6 +34,20 @@ export interface GolemRemoteConfig {
   sidecarUrl?: string;
 }
 
+/** 成功分支：冻结的 `{ ok: true, value }`。 */
+function ok<T>(value: T): RemoteResult<T> {
+  return { ok: true, value };
+}
+
+/** 业务失败分支：冻结的 `{ ok: false, error }`（RemoteFailure 形状）。 */
+function fail<T = never>(
+  code: string,
+  message: string,
+  details: Record<string, unknown> = {},
+): RemoteResult<T> {
+  return { ok: false, error: { code, message, details } };
+}
+
 export class GolemRemoteService extends TypertRemoteService {
   static inject: string[] = [];
 
@@ -42,32 +61,38 @@ export class GolemRemoteService extends TypertRemoteService {
   }
 
   @Remote("listInstances")
-  listInstances(): Promise<InstanceMeta[]> {
-    return this.api.listInstances();
+  listInstances(): Promise<RemoteResult<InstanceMeta[]>> {
+    return this.api.listInstances().then(ok);
   }
 
   @Remote("createInstance")
-  createInstance(id: InstanceId, name: string, persona?: string): Promise<InstanceMeta> {
-    return this.api.createInstance(id, name, persona);
+  createInstance(id: InstanceId, name: string, persona?: string): Promise<RemoteResult<InstanceMeta>> {
+    return this.api.createInstance(id, name, persona).then(ok);
   }
 
   @Remote("getInstanceMeta")
-  getInstanceMeta(id: InstanceId): Promise<InstanceMeta | null> {
-    return this.api.getInstanceMeta(id);
+  getInstanceMeta(id: InstanceId): Promise<RemoteResult<InstanceMeta | null>> {
+    return this.api.getInstanceMeta(id).then(ok);
   }
 
   @Remote("setInstanceMeta")
-  setInstanceMeta(id: InstanceId, patch: Partial<InstanceMeta>): Promise<InstanceMeta> {
-    return this.api.setInstanceMeta(id, patch);
+  setInstanceMeta(id: InstanceId, patch: Partial<InstanceMeta>): Promise<RemoteResult<InstanceMeta>> {
+    return this.api.setInstanceMeta(id, patch).then(ok, (error) =>
+      fail("instance-meta-write-failed", error instanceof Error ? error.message : String(error)),
+    );
   }
 
   @Remote("getDefaultInstance")
-  getDefaultInstance(): Promise<InstanceId | null> {
-    return this.api.getDefaultInstance();
+  getDefaultInstance(): Promise<RemoteResult<InstanceId | null>> {
+    return this.api.getDefaultInstance().then(ok);
   }
 
   @Remote("setDefaultInstance")
-  setDefaultInstance(id: InstanceId): Promise<void> {
-    return this.api.setDefaultInstance(id);
+  setDefaultInstance(id: InstanceId): Promise<RemoteResult<void>> {
+    return this.api.setDefaultInstance(id).then(
+      () => ok(undefined),
+      (error) =>
+        fail("default-instance-write-failed", error instanceof Error ? error.message : String(error)),
+    );
   }
 }

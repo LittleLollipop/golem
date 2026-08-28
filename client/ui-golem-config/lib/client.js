@@ -4,114 +4,19 @@ window.__ModuleLoader__.load({
 		var module = { exports: {} };
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
-		let react = require("react");
-		let react_jsx_runtime = require("react/jsx-runtime");
-		//#region src/golem-remote-contribution.ts
-		const SRC_JSON = { mode: "src-json" };
-		const golemRemoteContribution = {
-			package: "golem-client-ui-config",
-			descriptors: [
-				{
-					id: "golem/listInstances",
-					service: "golem",
-					namespace: "golem",
-					method: "listInstances",
-					invocation: { kind: "direct" },
-					parameters: [],
-					result: SRC_JSON
-				},
-				{
-					id: "golem/createInstance",
-					service: "golem",
-					namespace: "golem",
-					method: "createInstance",
-					invocation: { kind: "direct" },
-					parameters: [
-						{
-							name: "id",
-							wire: "id",
-							source: "json",
-							codec: SRC_JSON
-						},
-						{
-							name: "name",
-							wire: "name",
-							source: "json",
-							codec: SRC_JSON
-						},
-						{
-							name: "persona",
-							wire: "persona",
-							source: "json",
-							codec: SRC_JSON,
-							acceptsUndefined: true
-						}
-					],
-					result: SRC_JSON
-				},
-				{
-					id: "golem/getInstanceMeta",
-					service: "golem",
-					namespace: "golem",
-					method: "getInstanceMeta",
-					invocation: { kind: "direct" },
-					parameters: [{
-						name: "id",
-						wire: "id",
-						source: "json",
-						codec: SRC_JSON
-					}],
-					result: SRC_JSON
-				},
-				{
-					id: "golem/setInstanceMeta",
-					service: "golem",
-					namespace: "golem",
-					method: "setInstanceMeta",
-					invocation: { kind: "direct" },
-					parameters: [{
-						name: "id",
-						wire: "id",
-						source: "json",
-						codec: SRC_JSON
-					}, {
-						name: "patch",
-						wire: "patch",
-						source: "json",
-						codec: SRC_JSON
-					}],
-					result: SRC_JSON
-				},
-				{
-					id: "golem/getDefaultInstance",
-					service: "golem",
-					namespace: "golem",
-					method: "getDefaultInstance",
-					invocation: { kind: "direct" },
-					parameters: [],
-					result: SRC_JSON
-				},
-				{
-					id: "golem/setDefaultInstance",
-					service: "golem",
-					namespace: "golem",
-					method: "setDefaultInstance",
-					invocation: { kind: "direct" },
-					parameters: [{
-						name: "id",
-						wire: "id",
-						source: "json",
-						codec: SRC_JSON
-					}],
-					result: SRC_JSON
-				}
-			]
-		};
+		//#region \0rolldown/runtime.js
+		var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 		//#endregion
+		let react = require("react");
 		//#region src/golem-api.ts
 		function unwrap(r) {
-			if (!r.ok) throw new Error(`golem remote error: ${r.error.message}`);
-			return r.value;
+			if (r !== null && typeof r === "object" && "ok" in r) {
+				const res = r;
+				if (res.ok) return unwrap(res.value);
+				const err = res.error;
+				throw new Error(`[golem] remote error: ${err?.message ?? "unknown failure"} (${err?.code ?? "?"})`);
+			}
+			return r;
 		}
 		function createGolemApi(remote) {
 			return {
@@ -124,7 +29,47 @@ window.__ModuleLoader__.load({
 			};
 		}
 		//#endregion
+		//#region ../../../../../../../private/tmp/dsh-src/node_modules/.pnpm/react@18.3.1/node_modules/react/cjs/react-jsx-runtime.production.min.js
+		/**
+		* @license React
+		* react-jsx-runtime.production.min.js
+		*
+		* Copyright (c) Facebook, Inc. and its affiliates.
+		*
+		* This source code is licensed under the MIT license found in the
+		* LICENSE file in the root directory of this source tree.
+		*/
+		var require_react_jsx_runtime_production_min = /* @__PURE__ */ __commonJSMin(((exports) => {
+			var f = require("react"), k = Symbol.for("react.element"), m = Object.prototype.hasOwnProperty, n = f.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED.ReactCurrentOwner, p = {
+				key: !0,
+				ref: !0,
+				__self: !0,
+				__source: !0
+			};
+			function q(c, a, g) {
+				var b, d = {}, e = null, h = null;
+				void 0 !== g && (e = "" + g);
+				void 0 !== a.key && (e = "" + a.key);
+				void 0 !== a.ref && (h = a.ref);
+				for (b in a) m.call(a, b) && !p.hasOwnProperty(b) && (d[b] = a[b]);
+				if (c && c.defaultProps) for (b in a = c.defaultProps, a) void 0 === d[b] && (d[b] = a[b]);
+				return {
+					$$typeof: k,
+					type: c,
+					key: e,
+					ref: h,
+					props: d,
+					_owner: n.current
+				};
+			}
+			exports.jsx = q;
+			exports.jsxs = q;
+		}));
+		//#endregion
 		//#region src/GolemSettings.tsx
+		var import_jsx_runtime = (/* @__PURE__ */ __commonJSMin(((exports, module) => {
+			module.exports = require_react_jsx_runtime_production_min();
+		})))();
 		const card = {
 			border: "1px solid #ddd",
 			borderRadius: 10,
@@ -208,6 +153,7 @@ window.__ModuleLoader__.load({
 					setMetas(list);
 					setDefaultId(def);
 				} catch (e) {
+					console.error("[GolemSettings] refresh failed:", e);
 					setCreateHint("加载失败: " + String(e));
 				} finally {
 					setBusy(false);
@@ -262,14 +208,14 @@ window.__ModuleLoader__.load({
 					}));
 				}
 			};
-			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+			return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				style: { padding: 4 },
-				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 					style: card,
-					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						style: row,
 						children: [
-							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("input", {
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
 								style: {
 									...input,
 									flex: 1,
@@ -279,7 +225,7 @@ window.__ModuleLoader__.load({
 								value: newId,
 								onChange: (e) => setNewId(e.target.value)
 							}),
-							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("input", {
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
 								style: {
 									...input,
 									flex: 1,
@@ -289,33 +235,33 @@ window.__ModuleLoader__.load({
 								value: newName,
 								onChange: (e) => setNewName(e.target.value)
 							}),
-							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 								style: button,
 								onClick: onCreate,
 								disabled: busy,
 								children: "新建假人"
 							})
 						]
-					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 						style: hint,
 						children: createHint
 					})]
-				}), metas.length === 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+				}), metas.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 					style: meta,
 					children: "暂无实例，先在上方新建。"
 				}) : metas.map((m) => {
 					const isDef = defaultId === m.id;
-					return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+					return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						style: isDef ? cardDefault : card,
 						children: [
-							/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 								style: row,
 								children: [
-									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 										style: nameStyle,
 										children: m.name || m.id
 									}),
-									/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
 										style: meta,
 										children: [
 											"id: ",
@@ -324,24 +270,24 @@ window.__ModuleLoader__.load({
 											m.turns ?? 0
 										]
 									}),
-									isDef ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+									isDef ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 										style: tag,
 										children: "默认"
 									}) : null
 								]
 							}),
-							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("textarea", {
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("textarea", {
 								defaultValue: m.persona ?? "",
 								placeholder: "人格设定（第一人称，如：你是林夏……）",
 								style: textarea
 							}, m.id + ":" + (m.persona ?? "")),
-							/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 								style: {
 									...row,
 									marginTop: 8
 								},
 								children: [
-									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 										style: buttonGhost,
 										onClick: (e) => {
 											const ta = e.currentTarget.closest(".card")?.querySelector("textarea");
@@ -349,12 +295,12 @@ window.__ModuleLoader__.load({
 										},
 										children: "保存人格"
 									}),
-									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 										style: buttonGhost,
 										onClick: () => onDefault(m.id),
 										children: "设为默认"
 									}),
-									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 										style: hint,
 										children: hints[m.id] ?? ""
 									})
@@ -367,15 +313,20 @@ window.__ModuleLoader__.load({
 		}
 		//#endregion
 		//#region src/client.ts
-		/** 依赖的 client 服务：remote（TypertRemoteService 挂载面）+ slots（设置面板注册）。 */
-		const inject = ["remote", "slots"];
+		/** 依赖的 client 服务：remote + 由桥接包 golem-client-remote 经 $mount 建立的
+		*  `remote.golem` 命名空间（必须显式 inject 'remote.golem' 才能经 ctx.remote.golem
+		*  访问；参照 dsh 内置 ui-goal 的 'remote.goals'）+ slots（设置面板注册）。 */
+		const inject = [
+			"remote",
+			"remote.golem",
+			"slots"
+		];
 		/**
 		* 客户端插件入口：挂载 golem remote 贡献，并注册「假人」设置面板 section。
 		* @param ctx - dsh client 根上下文。
 		* @returns disposer：卸载 remote 贡献（section 注册随插件 fiber 自动回收）。
 		*/
 		async function apply(ctx) {
-			const disposeRemote = await ctx.remote.$mount(golemRemoteContribution);
 			const api = createGolemApi(ctx.remote.golem);
 			ctx.slots.inject("settings.section", () => ctx.slots.register({
 				name: "settings.section",
@@ -384,9 +335,7 @@ window.__ModuleLoader__.load({
 				label: () => "假人",
 				inject: () => ({ api })
 			}, GolemSettings));
-			return async () => {
-				await disposeRemote();
-			};
+			return async () => {};
 		}
 		//#endregion
 		exports.apply = apply;

@@ -2,13 +2,19 @@
 # Usage: pnpm dsh web --patch golem-cordis.yml --no-open
 # `golem` resolves via the symlink at node_modules/golem -> /Users/sai/WorkBuddy/dev/golem.
 
-# 客户端包 `golem-client-ui-config` 与本仓库 `client/ui-golem-config/` 对应，
-# 须在其 dsh 组装环境内可解析：在 dsh monorepo 的 node_modules 建软链
+# 客户端包 `golem-client-ui-config`（UI 面板）与 `golem-client-remote`（remote 挂载桥）
+# 分别与本仓库 `client/ui-golem-config/`、`client/ui-golem-remote/` 对应，须在 dsh
+# 组装环境内可解析：在 dsh monorepo 的 node_modules 建软链
 #   node_modules/golem-client-ui-config -> /Users/sai/WorkBuddy/dev/golem/client/ui-golem-config
-# （与 `golem` 软链同理），并预构建其 `./client` bundle（见该子包 README/构建说明）。
+#   node_modules/golem-client-remote    -> /Users/sai/WorkBuddy/dev/golem/client/ui-golem-remote
+# （与 `golem` 软链同理），并各自预构建其 `./client` bundle。
+# 加载顺序：bridge（golem-remote）先于 UI（golem-ui-config），由前者先 $mount
+# 建立 `remote.golem` 命名空间，后者 inject 消费，避免「自 mount → pending」死锁。
 
 - insert:
     - id: golem
       name: 'golem'
+    - id: golem-remote
+      name: 'golem-client-remote'
     - id: golem-ui-config
       name: 'golem-client-ui-config'
