@@ -47,7 +47,10 @@ if port_free "$DSH_PORT"; then
     fi
   done
   rm -f /tmp/fakeren-prestep.log
-  ( cd "$DSH_SRC" && node --import tsx/esm apps/cli/src/bin.ts web \
+  # ⚠️ 必须用 setsid 让 dsh web 脱离脚本的进程组独立成会话：否则 dev-up.sh 作为
+  # 后台任务退出时，工具会回收其进程组，连带把 dsh web 一起杀掉（症状：脚本自家
+  # 探活 401 通过，但任务一结束 3080 立刻没监听）。sidecar 同理。
+  ( cd "$DSH_SRC" && setsid nohup node --import tsx/esm apps/cli/src/bin.ts web \
       --patch "$GOLEM_DIR/golem-cordis.yml" --no-open > /tmp/golem-dsh.log 2>&1 & )
   echo "[dev-up] dsh web starting on :$DSH_PORT ..."
 else

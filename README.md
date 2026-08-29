@@ -1,8 +1,10 @@
 # 假人（golem）
 
-> 一个运行于 [DeepSeek Harness（dsh）](https://github.com/deepseek-ai/dsh) 底座上的 agent：通过「环境态 / 潜意识层」模拟人类被每时每刻环境潜移默化影响的认知，以产出更具"人感"的输出。
+> 一个运行于 [DeepSeek Harness（dsh）](https://github.com/deepseek-ai/dsh) 底座上的 agent：通过「环境态 / 潜意识层」模拟人每时每刻被环境潜移默化影响的过程，让输出多出一层"人味"。
 >
 > ⚠️ **实验性 / 概念验证**：项目处于概念阶段，依赖的 dsh 仍为 dev-preview（有 breaking changes 警告）。本文档描述的是设计意图与当前可运行形态，不等同于稳定产品。
+>
+> ✍️ **本文档由本项目的第一个假人「小静」（遗思静）撰写并润色。**
 
 ---
 
@@ -10,25 +12,27 @@
 
 用户问：**"周末想出去走走，附近有啥推荐？"**
 
-**普通 agent（relevance-gated）**：
+**普通 agent（相关性门控）**：
 
 > "您附近有 XX 公园（评分 4.6）、XX 美术馆（当前有印象派特展）。需要考虑亲子 / 独行 / 天气吗？我可以帮您规划路线。"
 
-正确、切题、服务目标、零冗余——**这正是"AI 声纹"**。
+正确、切题、服务目标、零冗余——这正是"AI 声纹"。
 
 **假人（带环境态渗漏）**：
 
 > "嗯……我上周扭了腰，爬楼还隐隐的。不过昨天刷到说西郊那片芦苇正黄，想着要不骑车去吹风发呆就行，不爬了。"
 
-后者多出的"活气"来自：(1) 一段与问题弱相关但**真实发生过**的身体状况（L0）；(2) 一条**今天偶然看到、并非为回答而检索**的信息（L0.5）；(3) 二者非目标导向地污染了回答，产生了 baseline 绝不会给的"不爬了"转向。
+后一段多出的"活气"来自三处：一段与问题弱相关、但真实发生过的身体状况（L0）；一条今天偶然看到、并非为回答而检索的信息（L0.5）；以及二者非目标导向地渗进回答，让 baseline 绝不会说的"不爬了"冒了出来。
 
-**这不是检索不到相关信息，而是根本没有通道去承载那些"不相关但塑造了你"的东西。** 详见 [`docs/ambient-leakage-framework.md`](docs/ambient-leakage-framework.md)。
+**这不是"检索不到相关信息"的问题，而是根本没有通道去承载那些"不相关、却塑造了你"的东西。** 详见 [`docs/ambient-leakage-framework.md`](docs/ambient-leakage-framework.md)。
 
 ---
 
 ## 它是什么
 
-假人是一个 **dsh 插件**，在运行时底座上补一层 **非目标导向、概率性、缓慢漂移的环境态 priming 通道**。核心主张：人类文本里的"活气"来自潜意识层面的环境影响（联想启动 + 情境认知），而当前 agent 的输入是相关性门控的，输出因此太切题、太服务目标，恰好读作"AI"。
+假人是一个 **dsh 插件**：在运行时底座上补一层**非目标导向、概率性、缓慢漂移的环境态 priming 通道**。
+
+核心主张：人类文本里的"活气"来自潜意识层面的环境影响——联想启动加情境认知。而当前 agent 的输入是相关性门控的：输出太切题、太服务目标，恰好被读作"AI"。
 
 终局定位（2026-08-23 画像确认）：不是"小说写作插件"，而是朝**真正的电脑助手**方向发展的日常 agent——一个有环境态、会漂移、有个体历史的助手。当前第一用户 = 作者本人（实验台 + 机制评审关），目标群体 = 大众。
 
@@ -50,7 +54,7 @@
 | **处境通道** | L1 | 可以是 | 共情 / 理解 |
 | **图检索通道** | recall | 是 | 事实：目标导向图检索（非向量 RAG） |
 
-**隔离不变量**：漂移通道的环境态分布必须与用户目标正交（`Ω ⟂ goal`）——一旦为"相关"而漏，立即退化为检索，人感死。完整形式化、机制、验证协议见 [`docs/ambient-leakage-framework.md`](docs/ambient-leakage-framework.md)。
+**隔离不变量**：漂移通道的环境态分布必须与用户目标正交（`Ω ⟂ goal`）——一旦为"相关"而漏，立即退化为检索，"人感"随之死亡。完整形式化、机制、验证协议见 [`docs/ambient-leakage-framework.md`](docs/ambient-leakage-framework.md) §10。
 
 ---
 
@@ -70,7 +74,7 @@ dsh (Cordis 插件底座)
 └── 客户端面板 golem-client-ui-config  # settings.section「假人」：实例列表 + 表单
 ```
 
-- **多实例隔离**：每个"假人"持有独立的、随时间各自漂移的环境态与记忆（per-instance 图记忆）。
+- **多实例隔离**：每个"假人"持有独立的环境态与记忆（per-instance 图记忆），各自随时间漂移、互不串味。
 - **正统扩展点**：UI 经 `ctx.remote.golem.*` 与宿主通信，不另起平行 REST；设置面板迁入 dsh 基座「假人」section。
 - **信号源边界下放**：宿主对信息模态 / 语义不可知，只提供「可输入信息」的通用插件接口与开关 / 本地存储 / 关停管控；具体输入由扩展组件决定。
 
@@ -81,14 +85,14 @@ dsh (Cordis 插件底座)
 1. **非目标导向扩散，不是检索**——环境态必须"漏"出来，不能"为相关而查"。
 2. **L0 种子须真实史基质，禁 fabricated**——凡机器制造都带作者意图，coherence 救不了。
 3. **可审计 = 非 fabricated**——每条环境态种子带来源引用 + 选择路径，可指回具体真实事件 / Wiki 条目。
-4. **调 leak rate**——注入太多 = 噪声干扰，太少 = 无效，需 spike 调。
-5. **拥抱排名偏差，勿"纠正"**——排名的流行度 / SEO 偏差是真实偶然性，纠正会 reintroduce 作者意图。
+4. **调 leak rate**——注入太多 = 噪声，太少 = 无效，需 spike 调。
+5. **拥抱排名偏差，勿"纠正"**——排名的流行度 / SEO 偏差是真实偶然性，纠正会重新引入作者意图。
 
 ---
 
 ## 快速上手（实验性）
 
-> 需要先从源码构建 dsh（dev-preview）。假人是 dsh 的插件，通过 cordis patch 叠加加载，不是独立二进制。
+> 需要先从源码构建 dsh（dev-preview）。假人是 dsh 的插件，经 cordis patch 叠加加载，不是独立二进制。
 
 ```bash
 # 1. 取得 dsh 源码并装好依赖（见 dsh 仓库）
@@ -103,8 +107,8 @@ ln -sfn /path/to/golem/client/ui-golem-remote  dsh/node_modules/golem-client-rem
 cd /path/to/golem/client/ui-golem-config && tsdown
 cd /path/to/golem/client/ui-golem-remote && tsdown
 
-# 4. 启动记忆 sidecar + dsh web（叠加 golem-cordis.yml 补丁）
-node /path/to/golem/sidecar/memory-sidecar.mjs &
+# 4. 启动记忆 sidecar（真 axolotl 图库后端）+ dsh web（叠加 golem-cordis.yml 补丁）
+python /path/to/golem/sidecar/server.py --root ~/.fakeren/instances --port 8741 &
 pnpm dsh web --patch /path/to/golem/golem-cordis.yml --no-open --port 3080
 ```
 
@@ -116,7 +120,7 @@ pnpm dsh web --patch /path/to/golem/golem-cordis.yml --no-open --port 3080
 
 ## 当前状态
 
-- **可运行**：多实例「假人」设置面板已闭环（增删 / 设默认 / 改 persona 经 `ctx.remote.golem.*` 全通）；环境态捕获、图记忆、漏出双候选控制已实现。
+- **可运行**：多实例「假人」设置面板已闭环——增删 / 设默认 / 改 persona 经 `ctx.remote.golem.*` 全通；环境态捕获、图记忆、漏出双候选控制已实现。
 - **概念验证**：框架的"人感 lift"尚未做规模化盲测 A/B（方法论见框架文档 §10）；leak rate 最佳区间、多用户 + 隐私监管部署仍待验证。
 - **底座依赖**：dsh 仍 dev-preview，API 可能变动；本项目随其迭代。
 
