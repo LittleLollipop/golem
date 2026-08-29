@@ -102,6 +102,10 @@ class InstanceGraph:
         self._g.add_vertex(nid, rec)
         if self._g.get_edge(ROOT, nid) is None:
             self._g.add_edge(ROOT, nid, 0.01, {"kind": "has_member", "status": "live"})
+        # Persist immediately (durability fix): previously writes were only
+        # flushed by set_meta/consolidate/close, so a sidecar kill lost the
+        # most recent in-memory nodes — making "memory-first" unreliable.
+        self._g.save()
 
     def add_edge(self, e: dict):
         fn, tn = sid(e["from"]), sid(e["to"])
@@ -115,6 +119,7 @@ class InstanceGraph:
             "weight": w, "props_json": json.dumps(e.get("props", {}), ensure_ascii=False),
         })
         self._save_edges()
+        self._g.save()
 
     # ── instance metadata (lives in the same axolotl graph, not a file) ──
     def get_meta(self) -> dict | None:
@@ -189,6 +194,30 @@ class InstanceGraph:
              "weight": e.get("weight", 1.0), "props": json.loads(e.get("props_json", "{}"))}
             for e in self._edges if e["kind"] == "crossdomain_weak" and e["instanceId"] == instance_id
         ][:limit]
+
+    def neighbors(self, node_id: str, instance_id: str):
+        """1-hop neighbors of a node (for 2-hop recall expansion)."""
+        out = []
+        seen = set()
+        for e in self._edges:
+            if e.get("instanceId") != instance_id:
+                continue
+            other = None
+            if e.get("from") == node_id:
+                other = e.get("to")
+            elif e.get("to") == node_id:
+                other = e.get("from")
+            if other is None or other in seen:
+                continue
+            seen.add(other)
+            raw = self._g.get_vertex(sid(other))
+            if raw is None:
+                continue
+            p = flat(raw)
+            if p.get("type") in ("root", "manifest", "__meta__"):
+                continue
+            out.append(self._reconstruct(p))
+        return out
 
     # ── maintenance: Plan B decay + conservative recursive growth ──
     def consolidate(self, instance_id, budget):
@@ -426,6 +455,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(g.recall(body))
                 if op == "crossdomain":
                     return self._send(g.cross_domain(inst, body.get("limit", 200)))
+                if op == "neighbors":
+                    return self._send(g.neighbors(body.get("nodeId"), inst))
                 if op == "consolidate":
                     return self._send(g.consolidate(inst, body.get("budget", 50)))
                 if op == "meta":

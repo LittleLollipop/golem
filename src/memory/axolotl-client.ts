@@ -77,6 +77,10 @@ export class AxolotlClient implements GraphStore {
     return this.post<GraphEdge[]>(`/${encodeURIComponent(instanceId)}/crossdomain`, { limit });
   }
 
+  async neighbors(instanceId: InstanceId, nodeId: string): Promise<GraphNode[]> {
+    return this.post<GraphNode[]>(`/${encodeURIComponent(instanceId)}/neighbors`, { nodeId });
+  }
+
   async consolidate(instanceId: InstanceId, budget: number): Promise<ConsolidationReport> {
     return this.post<ConsolidationReport>(`/${encodeURIComponent(instanceId)}/consolidate`, {
       budget,

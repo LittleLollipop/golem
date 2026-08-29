@@ -37,7 +37,7 @@ export function createMemoryRecallTool(deps: MemoryRecallDeps) {
   return {
     name: "memory_recall",
     description:
-      "回想你自己的记忆图：用检索词拉回相关的往昔对话与心事。每回合最多调用 3 次，只在确有需要、且指针提示里有对应记忆时才调用；优先回想最相关的一条。",
+      "回想你自己的记忆图：用检索词拉回相关的往昔对话与心事。每当用户提到具体的人、作品、项目或事物时，应先调用此工具确认记忆中是否已有相关内容，再决定是否检索文件系统或联网等外部来源。每回合最多调用 3 次，只在确有需要、且指针提示里有对应记忆时才调用；优先回想最相关的一条。",
     // NOTE: dsh passes `parameters` DIRECTLY to the model as a JSON Schema
     // object (it does NOT auto-wrap a property map the way defineTool does).
     // The root MUST be { type: "object", properties, required } — otherwise the

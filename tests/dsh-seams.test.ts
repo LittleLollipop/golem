@@ -63,7 +63,9 @@ describe("DshAdapter.onPreStep — message source hygiene", () => {
       // otherwise the host dsh runtime throws
       // "session event 'user/message' carries non-JSON-serializable data".
       expect(m.source.fakeren.seeds).toBeUndefined();
-      expect(["persona", "subconscious"]).toContain(m.source.fakeren.kind);
+      expect(["persona", "subconscious", "operating-directive", "recall-pointer"]).toContain(
+        m.source.fakeren.kind,
+      );
     }
   });
 });
@@ -176,5 +178,55 @@ describe("DshAdapter.onPreStep — recall-pointer injection (dual-mechanism §3)
       step: 1,
     });
     expect(recallBudget.tryConsume(key)).toBe(2); // reset by the step-1 pre-step
+  });
+});
+
+describe("DshAdapter.onPreStep — memory-first operating-directive (2026-08-29)", () => {
+  async function runPreStep(ev: any) {
+    const { ctx, getPreStep } = makeMockCtx();
+    const adapter = new DshAdapter(ctx);
+    adapter.onPreStep(async () => [
+      {
+        role: "user" as const,
+        content: "（记忆索引）\n卷一·不嫁、钟无艳小说",
+        meta: { channel: "recall-pointer" },
+      },
+      {
+        role: "user" as const,
+        content: "操作准则（始终生效）：…先调用 memory_recall…",
+        meta: { channel: "operating-directive" },
+      },
+    ]);
+    return await getPreStep()!(ev, () => {});
+  }
+
+  it("injects the operating-directive as a distinct golem-directive context block", async () => {
+    const decision = await runPreStep({
+      agent: { session: "s-directive-1" },
+      messages: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+      turn: 1,
+      step: 1,
+    });
+    const dir = (decision.messages as any[]).filter(
+      (m) => m.source?.fakeren?.kind === "operating-directive",
+    );
+    expect(dir.length).toBe(1);
+    expect(dir[0].source.plugin).toBe("golem-directive");
+    expect(dir[0].content[0].text).toContain("memory_recall");
+  });
+
+  it("is suppressed on tool-loop continuations (step >= 2), like the other injected blocks", async () => {
+    const { recallBudget } = await import("../src/recall-budget.js");
+    const key = "s-directive-tool";
+    recallBudget.reset(key);
+    const decision = await runPreStep({
+      agent: { session: key },
+      messages: [{ role: "user", content: [{ type: "text", text: "tool result" }] }],
+      turn: 1,
+      step: 2,
+    });
+    // assemble() is skipped on step >= 2, so no directive/leak/pointer is injected
+    const injected = (decision.messages as any[]).filter((m) => m.source?.fakeren);
+    expect(injected.length).toBe(0);
   });
 });

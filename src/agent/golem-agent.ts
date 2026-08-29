@@ -26,6 +26,19 @@ import type { DshAdapter } from "../adapter/dsh-seams.js";
 import type { LeakPostFilter, PostFilterAction } from "../leak/post-filter.js";
 import { stampInjection } from "./provenance.js";
 
+/**
+ * 始终生效的操作准则（req_memory_first_default, 2026-08-29 用户决定）：要求模型
+ * 在检索任何外部来源（文件系统 / 联网 / 其它）之前，先调用 memory_recall 查自己
+ * 的记忆图。这是把"默认行为"从"直接 grep 文件/搜网"改成"先查记忆"——这样即便
+ * 指针索引(A)或二跳(C)尚不完善，模型也会主动先回忆、出错概率大幅降低。
+ * 作为独立的非角色内指令块注入，每回合 step-1 都生效。
+ */
+const MEMORY_FIRST_DIRECTIVE =
+  "操作准则（始终生效）：当用户在对话里提到任何具体的作品、项目、人名、角色、地名或事物时，" +
+  "你必须先调用 memory_recall 工具检索你自己的记忆图，确认记忆中是否已有相关内容，" +
+  "再决定要不要搜索文件系统、联网或查其它来源。不要不经记忆检索，就把记忆里可能已有的东西" +
+  "当作陌生信息去直接 grep 文件或搜网。";
+
 export class GolemAgent {
   constructor(
     private readonly classifier: TaskClassifier,
@@ -126,14 +139,23 @@ export class GolemAgent {
         },
       });
     }
+    // 始终生效的"先查记忆"操作准则（2026-08-29）：独立于角色人设与泄漏块，每
+    // 回合 step-1 注入，把模型的默认检索行为改为"先回忆再查外部"。
+    messages.push({
+      role: "user",
+      content: MEMORY_FIRST_DIRECTIVE,
+      meta: { channel: "operating-directive" },
+    });
     // Mechanism A pointer block (dual-mechanism-recall.md §3): a clean "memory
     // index" that is NOT in-character — its job is to tell the model which
     // memories exist and invite a memory_recall call, not to be woven into
     // prose. Distinct channel so dsh-seams renders it separately from the leak.
     if (pointerContribs.length > 0) {
       const indexList = pointerContribs.map((c) => c.content).join("、");
+      // (B 护栏) 明确告知：索引相关即调 memory_recall，无需先翻文件/搜网。
       const frame =
-        "（以下是你记忆图中与本次对话相关的索引。可在需要时调用 memory_recall 工具拉取任意一条的完整内容：）";
+        "（以下是你记忆图中与本次对话相关的索引（关键词）。当其中任何一条与用户当前话题相关时，" +
+        "请直接调用 memory_recall 拉取完整内容，无需先翻文件或搜网：）";
       messages.push({
         role: "user",
         content: `${frame}\n${indexList}`,

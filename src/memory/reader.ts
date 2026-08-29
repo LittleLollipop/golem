@@ -25,4 +25,9 @@ export class MemoryReader {
   async crossDomain(instanceId: InstanceId, limit = 200): Promise<GraphEdge[]> {
     return this.store.queryCrossDomain(instanceId, limit);
   }
+
+  /** 1-hop neighbors (2-hop recall expansion). */
+  async neighbors(instanceId: InstanceId, nodeId: string): Promise<GraphNode[]> {
+    return this.store.neighbors(instanceId, nodeId);
+  }
 }

@@ -44,6 +44,9 @@ export interface GraphStore {
   /** Cross-domain weak edges — the physical载体 of L0 drift seeds (C2). */
   queryCrossDomain(instanceId: InstanceId, limit?: number): Promise<GraphEdge[]>;
 
+  /** 1-hop neighbors of a node (for 2-hop recall expansion, dual-mechanism §C). */
+  neighbors(instanceId: InstanceId, nodeId: string): Promise<GraphNode[]>;
+
   /** Plan B decay + conservative recursive growth (req_memory_consolidation). */
   consolidate(instanceId: InstanceId, budget: number): Promise<ConsolidationReport>;
 

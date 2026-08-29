@@ -87,15 +87,17 @@ function toText(content: unknown): string {
  */
 function fakerenUserMessage(
   text: string,
-  kind: "persona" | "subconscious" | "recall-pointer",
+  kind: "persona" | "subconscious" | "recall-pointer" | "operating-directive",
 ): ReturnType<typeof createUserMessage> {
   // source.kind !== "user" → dsh renders this as an inline CONTEXT block (in the
   // middle of the conversation) rather than a user bubble. Distinct plugin labels
-  // keep persona vs leakage vs recall-index visually distinguishable. `fakeren`
-  // is retained for loadSessionEvents()'s injected-detection.
+  // keep persona vs leakage vs recall-index vs operating-directive visually
+  // distinguishable. `fakeren` is retained for loadSessionEvents()'s
+  // injected-detection.
   const plugin =
     kind === "persona" ? "golem-identity"
     : kind === "recall-pointer" ? "golem-recall"
+    : kind === "operating-directive" ? "golem-directive"
     : "golem-leak";
   return createUserMessage({
     content: [{ type: "text" as const, text }],
@@ -229,7 +231,21 @@ export class DshAdapter {
       } catch (err) {
         pLog(`[golem:pre-step] WARNING: recall-pointer createUserMessage threw: ${String(err)}`);
       }
-      pLog(`[golem:pre-step] exit leaked=${leaked.length} pointer=${pointerMsg.length}`);
+      // 始终生效的"先查记忆"操作准则（req_memory_first_default）：与指针块同为非
+      // 角色内指令，插在指针块之前（先讲规则、再给索引）。plugin 标签 golem-directive。
+      let directiveMsg: unknown[] = [];
+      try {
+        const directiveBlock = augmented.find(
+          (m) => m.meta && (m.meta as any).channel === "operating-directive",
+        );
+        if (directiveBlock) {
+          directiveMsg.push(fakerenUserMessage(directiveBlock.content, "operating-directive"));
+          pLog(`[golem:pre-step] operating-directive injected for session=${sessionId}`);
+        }
+      } catch (err) {
+        pLog(`[golem:pre-step] WARNING: operating-directive createUserMessage threw: ${String(err)}`);
+      }
+      pLog(`[golem:pre-step] exit leaked=${leaked.length} pointer=${pointerMsg.length} directive=${directiveMsg.length}`);
       for (const m of augmented) {
         if (m.meta && (m.meta as any).channel === "assembled") {
           pLog(`[golem:pre-step] LEAK BLOCK >>>\n${m.content}\n<<< LEAK BLOCK`);
@@ -248,7 +264,7 @@ export class DshAdapter {
       }
       return {
         kind: "enter",
-        messages: [...personaMsg, ...(ev?.messages ?? []), ...leaked, ...pointerMsg],
+        messages: [...personaMsg, ...(ev?.messages ?? []), ...leaked, ...directiveMsg, ...pointerMsg],
       };
     });
   }

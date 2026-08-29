@@ -19,6 +19,8 @@ import { stripThinking } from "../memory/summarize.js";
 export interface RecallSource {
   /** Returns targeted recall nodes from the agent's own memory graph. */
   recall(instanceId: InstanceId, keywords: string[], limit?: number): Promise<GraphNode[]>;
+  /** 1-hop neighbors of a node (for 2-hop recall expansion, dual-mechanism §C). */
+  neighbors(instanceId: InstanceId, nodeId: string): Promise<GraphNode[]>;
 }
 
 /** Default source: delegates to the axolotl-backed MemoryReader (graph traversal). */
@@ -26,6 +28,9 @@ export class GraphRecallSource implements RecallSource {
   constructor(private readonly reader: MemoryReader) {}
   async recall(instanceId: InstanceId, keywords: string[], limit = 20): Promise<GraphNode[]> {
     return this.reader.recall(instanceId, keywords, undefined, limit);
+  }
+  async neighbors(instanceId: InstanceId, nodeId: string): Promise<GraphNode[]> {
+    return this.reader.neighbors(instanceId, nodeId);
   }
 }
 
@@ -50,14 +55,53 @@ function toKeywords(userText: string): string[] {
   return Array.from(seen).slice(0, 24);
 }
 
+/**
+ * Relevance ranking for recall results (fix: previously the sidecar returned
+ * matches in graph-traversal order, so an early-inserted noise node could bury
+ * the node the USER actually named — e.g. "卷一·不嫁" ranked ~8th and got
+ * sliced off). Scoring, in priority order:
+ *   (a) label matches (strongest — "提到作品名" should surface that node),
+ *   (b) matched-keyword specificity (longer matched kw ⇒ more specific ⇒ higher),
+ *   (c) total keyword coverage,
+ * tie-broken by node weight then recency (dual-mechanism-recall.md §C).
+ */
+function rankNodes(nodes: GraphNode[], keywords: string[]): GraphNode[] {
+  const kws = keywords.map((k) => k.toLowerCase()).filter(Boolean);
+  const scored = nodes.map((n) => {
+    const label = (n.label ?? "").toLowerCase();
+    const hay = label + " " + JSON.stringify(n.props ?? {}).toLowerCase();
+    let labelMatches = 0;
+    let anyMatches = 0;
+    let specLen = 0;
+    for (const k of kws) {
+      if (k.length === 0) continue;
+      const inLabel = label.includes(k);
+      const inHay = hay.includes(k);
+      if (inLabel) {
+        labelMatches += 1;
+        specLen += k.length;
+      }
+      if (inHay) anyMatches += 1;
+    }
+    const score = labelMatches * 10 + specLen * 1.5 + anyMatches * 1;
+    const weight = typeof n.weight === "number" ? n.weight : 0;
+    const ts = typeof n.timestamp === "number" ? n.timestamp : 0;
+    return { n, score, weight, ts };
+  });
+  scored.sort((a, b) => b.score - a.score || b.weight - a.weight || b.ts - a.ts);
+  return scored.map((s) => s.n);
+}
+
 export class RecallChannel {
   constructor(private readonly source: RecallSource) {}
 
   /** Mechanism B (pull): return the raw matched graph nodes for a query. Used by
    *  the `memory_recall` tool to fetch full content on demand. Over-fetches then
-   *  slices so keyword ranking still applies (dual-mechanism-recall.md §4). */
+   *  ranks + slices so keyword relevance applies (dual-mechanism-recall.md §4/§C). */
   async fetchNodes(query: string, instanceId: InstanceId, limit = 5): Promise<GraphNode[]> {
-    return (await this.source.recall(instanceId, toKeywords(query), limit * 4)).slice(0, limit);
+    const kws = toKeywords(query);
+    const ranked = rankNodes(await this.source.recall(instanceId, kws, limit * 4), kws);
+    return ranked.slice(0, limit);
   }
 
   /** Mechanism B (pull): full content as ChannelContribution[] (the old
@@ -68,17 +112,42 @@ export class RecallChannel {
 
   /** Mechanism A (push-hint): only the node labels / keywords, NO full summary.
    *  Surfaced as a lightweight "memory index" that prompts the model to call
-   *  `memory_recall` for details (dual-mechanism-recall.md §3/§5). */
+   *  `memory_recall` for details (dual-mechanism-recall.md §3/§5). Results are
+   *  ranked by relevance (§C) and 2-hop expanded around the top anchors so a
+   *  named entity surfaces its whole cluster (e.g. 卷一·不嫁 → 钟无艳/梗概/节拍). */
   async pointers(userText: string, instanceId: InstanceId, limit = 5): Promise<ChannelContribution[]> {
-    const nodes = await this.source.recall(instanceId, toKeywords(userText), limit * 4);
-    return nodes.slice(0, limit).map((n, i) => ({
+    const kws = toKeywords(userText);
+    const ranked = rankNodes(await this.source.recall(instanceId, kws, limit * 4), kws);
+    // (C) 2-hop expansion: pull the neighbors of the top anchors (cap 3) so the
+    // pointer list carries the named entity AND its immediate context cluster.
+    const expanded: GraphNode[] = [...ranked];
+    const seen = new Set(ranked.map((n) => n.id));
+    const anchors = ranked.slice(0, Math.min(3, ranked.length));
+    for (const a of anchors) {
+      const anchorIdx = expanded.findIndex((n) => n.id === a.id);
+      if (anchorIdx < 0) continue;
+      try {
+        const nbrs = await this.source.neighbors(instanceId, a.id);
+        for (const nb of nbrs) {
+          if (!seen.has(nb.id)) {
+            seen.add(nb.id);
+            // Insert immediately after its anchor so the named entity's cluster
+            // stays grouped at the top (appending would push it past the slice).
+            expanded.splice(anchorIdx + 1, 0, nb);
+          }
+        }
+      } catch {
+        /* sidecar down → skip expansion, keep the ranked anchors */
+      }
+    }
+    return expanded.slice(0, limit).map((n, i) => ({
       channel: "recall-pointer" as const,
       content: n.label,
       seedId: `recall_ptr_${n.id}_${i}`,
       valence: typeof n.valence === "number" ? n.valence : 0,
       provenance: {
         source: `node:${n.id}`,
-        selectionPath: `recall pointer rank ${i + 1}`,
+        selectionPath: `recall pointer rank ${i + 1}${i >= ranked.length ? " (2-hop)" : ""}`,
       },
     }));
   }

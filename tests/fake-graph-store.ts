@@ -70,6 +70,21 @@ export class FakeGraphStore implements GraphStore {
       .filter((e) => e.instanceId === instanceId && e.kind === "crossdomain_weak")
       .slice(0, limit);
   }
+  async neighbors(instanceId: InstanceId, nodeId: string): Promise<GraphNode[]> {
+    const out: GraphNode[] = [];
+    const seen = new Set<string>();
+    for (const e of this.allEdges) {
+      if (e.instanceId !== instanceId) continue;
+      let other: string | undefined;
+      if (e.from === nodeId) other = e.to;
+      else if (e.to === nodeId) other = e.from;
+      if (!other || seen.has(other)) continue;
+      seen.add(other);
+      const n = this.nodes.get(other);
+      if (n) out.push(n);
+    }
+    return out;
+  }
   async consolidate(instanceId: InstanceId, budget: number): Promise<ConsolidationReport> {
     this.lastConsolidate = { instanceId, budget };
     return {
