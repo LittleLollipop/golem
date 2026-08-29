@@ -25,11 +25,12 @@ window.__ModuleLoader__.load({
 				getInstanceMeta: (id) => remote.getInstanceMeta(id).then(unwrap),
 				setInstanceMeta: (id, patch) => remote.setInstanceMeta(id, patch).then(unwrap),
 				getDefaultInstance: () => remote.getDefaultInstance().then(unwrap),
-				setDefaultInstance: (id) => remote.setDefaultInstance(id).then(unwrap)
+				setDefaultInstance: (id) => remote.setDefaultInstance(id).then(unwrap),
+				deleteInstance: (id) => remote.deleteInstance(id).then(unwrap)
 			};
 		}
 		//#endregion
-		//#region ../../../../../../../private/tmp/dsh-src/node_modules/.pnpm/react@18.3.1/node_modules/react/cjs/react-jsx-runtime.production.min.js
+		//#region ../../../dsh-src/node_modules/.pnpm/react@18.3.1/node_modules/react/cjs/react-jsx-runtime.production.min.js
 		/**
 		* @license React
 		* react-jsx-runtime.production.min.js
@@ -132,6 +133,11 @@ window.__ModuleLoader__.load({
 			background: "#fff",
 			color: "#2b6cb0"
 		};
+		const buttonDanger = {
+			...button,
+			background: "#c0392b",
+			borderColor: "#c0392b"
+		};
 		const hint = {
 			fontSize: 12,
 			color: "#b06",
@@ -146,12 +152,23 @@ window.__ModuleLoader__.load({
 			const [createHint, setCreateHint] = (0, react.useState)("");
 			const [hints, setHints] = (0, react.useState)({});
 			const [busy, setBusy] = (0, react.useState)(false);
+			/**
+			* 人格输入框的草稿（受控）。key = instanceId。
+			*
+			* ⚠️ 历史 bug（保存人格静默存成空串）：旧实现用非受控 textarea + 点保存时
+			* `e.currentTarget.closest('.card')?.querySelector('textarea')` 反查 DOM 取值。
+			* 但本组件全部使用内联 style、从未设置 `className="card"`，`closest` 恒为 null，
+			* 于是取值恒为 ''，请求照样成功 → UI 显示「已保存」而图库里 persona 被清空。
+			* 现在改为受控 + state 草稿：值只从 React state 来，不依赖 DOM 结构/类名。
+			*/
+			const [drafts, setDrafts] = (0, react.useState)({});
 			const refresh = (0, react.useCallback)(async () => {
 				setBusy(true);
 				try {
 					const [list, def] = await Promise.all([api.listInstances(), api.getDefaultInstance()]);
 					setMetas(list);
 					setDefaultId(def);
+					setDrafts(Object.fromEntries(list.map((m) => [m.id, m.persona ?? ""])));
 				} catch (e) {
 					console.error("[GolemSettings] refresh failed:", e);
 					setCreateHint("加载失败: " + String(e));
@@ -180,10 +197,10 @@ window.__ModuleLoader__.load({
 			};
 			const onSave = async (id, persona) => {
 				try {
-					await api.setInstanceMeta(id, { persona });
+					const echoed = (await api.setInstanceMeta(id, { persona })).persona ?? "";
 					setHints((h) => ({
 						...h,
-						[id]: "已保存"
+						[id]: echoed === persona ? persona.trim() ? "已保存（" + persona.length + " 字）" : "已保存（已清空人格）" : "⚠ 保存未生效：服务端回读与提交不一致"
 					}));
 					await refresh();
 				} catch (e) {
@@ -199,6 +216,22 @@ window.__ModuleLoader__.load({
 					setHints((h) => ({
 						...h,
 						[id]: "已设为默认"
+					}));
+					await refresh();
+				} catch (e) {
+					setHints((h) => ({
+						...h,
+						[id]: "失败: " + String(e)
+					}));
+				}
+			};
+			const onDelete = async (id) => {
+				if (!window.confirm(`确定删除假人「${id}」？此操作不可撤销，其记忆图与人格设定将一并清除。`)) return;
+				try {
+					await api.deleteInstance(id);
+					setHints((h) => ({
+						...h,
+						[id]: "已删除"
 					}));
 					await refresh();
 				} catch (e) {
@@ -277,10 +310,21 @@ window.__ModuleLoader__.load({
 								]
 							}),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("textarea", {
-								defaultValue: m.persona ?? "",
+								value: drafts[m.id] ?? "",
+								onChange: (e) => {
+									const v = e.target.value;
+									setDrafts((d) => ({
+										...d,
+										[m.id]: v
+									}));
+									setHints((h) => h[m.id] ? {
+										...h,
+										[m.id]: ""
+									} : h);
+								},
 								placeholder: "人格设定（第一人称，如：你是林夏……）",
 								style: textarea
-							}, m.id + ":" + (m.persona ?? "")),
+							}),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 								style: {
 									...row,
@@ -289,10 +333,8 @@ window.__ModuleLoader__.load({
 								children: [
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 										style: buttonGhost,
-										onClick: (e) => {
-											const ta = e.currentTarget.closest(".card")?.querySelector("textarea");
-											onSave(m.id, ta?.value ?? "");
-										},
+										onClick: () => onSave(m.id, drafts[m.id] ?? ""),
+										disabled: busy,
 										children: "保存人格"
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
@@ -300,6 +342,11 @@ window.__ModuleLoader__.load({
 										onClick: () => onDefault(m.id),
 										children: "设为默认"
 									}),
+									!isDef ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										style: buttonDanger,
+										onClick: () => onDelete(m.id),
+										children: "删除"
+									}) : null,
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 										style: hint,
 										children: hints[m.id] ?? ""

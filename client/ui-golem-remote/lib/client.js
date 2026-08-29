@@ -4196,6 +4196,20 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						codec: strict("golem/types#InstanceId", string())
 					}],
 					result: strict("golem/types#null", remoteResult(_null()))
+				},
+				{
+					id: "golem#golem/deleteInstance",
+					service: "golem",
+					namespace: "golem",
+					method: "deleteInstance",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "id",
+						wire: "id",
+						source: "json",
+						codec: strict("golem/types#InstanceId", string())
+					}],
+					result: strict("golem/types#null", remoteResult(_null()))
 				}
 			]
 		};

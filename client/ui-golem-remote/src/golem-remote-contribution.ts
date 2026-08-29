@@ -136,6 +136,17 @@ const descriptors: readonly InvocationDescriptor[] = [
     ],
     result: strict('golem/types#null', remoteResult(z.null())),
   },
+  {
+    id: 'golem#golem/deleteInstance',
+    service: 'golem',
+    namespace: 'golem',
+    method: 'deleteInstance',
+    invocation: { kind: 'direct' },
+    parameters: [
+      { name: 'id', wire: 'id', source: 'json', codec: strict('golem/types#InstanceId', z.string()) },
+    ],
+    result: strict('golem/types#null', remoteResult(z.null())),
+  },
 ]
 
 export const golemRemoteContribution: TypertRemoteContribution = {

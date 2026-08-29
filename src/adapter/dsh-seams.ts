@@ -60,6 +60,16 @@ function toText(content: unknown): string {
  * as a user-role message BEFORE the real question + leak, ONCE per session
  * (the Set resets only on a full dsh restart, which is fine — a new session
  * just gets it again on its first turn). The DEFAULT_PERSONA lives in index.ts.
+ *
+ * Rendering contract (dsh 0.1.2-alpha.1 web UI): a `user/message` event renders
+ * as a right-aligned USER BUBBLE when `source.kind === "user"`, but as a
+ * collapsible inline CONTEXT block ("in the middle" of the conversation, never
+ * as sent content) when `source.kind !== "user"`. Persona + subconscious
+ * leakage MUST surface as those context blocks, so we tag them with a plugin
+ * source. The model still receives them (pre-step `enter` messages are always
+ * user-role), so `role` stays "user"; only `source.kind` changes the *display*.
+ * We keep `fakeren` so loadSessionEvents() can still mark them `injected: true`
+ * and exclude them from the memory graph (TODO#28 resolved).
  */
 
 /**
@@ -78,9 +88,14 @@ function fakerenUserMessage(
   text: string,
   kind: "persona" | "subconscious",
 ): ReturnType<typeof createUserMessage> {
+  // source.kind !== "user" → dsh renders this as an inline CONTEXT block (in the
+  // middle of the conversation) rather than a user bubble. Distinct plugin labels
+  // keep persona vs leakage visually distinguishable. `fakeren` is retained for
+  // loadSessionEvents()'s injected-detection.
+  const plugin = kind === "persona" ? "golem-identity" : "golem-leak";
   return createUserMessage({
     content: [{ type: "text" as const, text }],
-    source: { kind: "user", fakeren: { kind } } as any,
+    source: { kind: "plugin", plugin, fakeren: { kind } } as any,
   });
 }
 

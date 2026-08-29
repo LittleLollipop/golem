@@ -44,6 +44,12 @@ export class InstanceRegistry {
     return await this.store.getMeta(id);
   }
 
+  /** Delete an instance entirely (meta + memory graph). The owner sidecar
+   *  refuses to delete the seed `default` instance (400). */
+  async delete(id: InstanceId): Promise<void> {
+    await this.store.deleteInstance(id);
+  }
+
   /** Bind a session to an instance. Throws if already bound to a *different* one. */
   async select(sessionId: string, instanceId: InstanceId): Promise<void> {
     const existing = await this.current(sessionId);

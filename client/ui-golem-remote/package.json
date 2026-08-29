@@ -1,6 +1,6 @@
 {
   "name": "golem-client-remote",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Golem remote 通道挂载桥：独立客户端包，仅负责把 golem 的 Remote 贡献 $mount 进 dsh 浏览器 runtime，建立 `ctx.remote.golem` 命名空间，供消费包（golem-client-ui-config）inject 后使用。对齐 dsh 基座 `dsh-api-remotes` 的『独立 mount』模式。",
   "type": "module",
   "main": "lib/index.js",

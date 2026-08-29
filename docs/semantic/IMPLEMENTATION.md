@@ -13,11 +13,18 @@
 | 项 | 结果 |
 |---|---|
 | TS 类型检查 `tsc --noEmit` | ✅ 零错误（strict + noUnusedLocals/Parameters） |
-| sidecar 真 axolotl 后端冒烟 | ✅ 节点/边/recall/crossDomain/consolidate 全部跑通真实 `axolotl_rs` |
+| sidecar 真 axolotl 后端冒烟 | ✅ 节点/边/query/recall/crossDomain/consolidate/delete + meta/config/session 全部跑通真实 `axolotl_rs`（2026-08-29 纠正：此前实跑的是内存桩 `memory-sidecar.mjs`，已删除，现 `server.py` 为唯一后端） |
 | Plan B 衰减触发 | ✅ 40 次 consolidate 后 11 条 decayed（停复注），`stats` 可见 |
 | 保守递归生长触发 | ✅ 40 次 consolidate 偶发 8 个 `MetaNode` |
 | `/instances` bug（create 后不返回） | ✅ 已修：`ensure()` 强制 `save()` 落盘 + `instances()` 合并内存缓存 |
 | 三通道分离（C2） | ✅ drift 只用 `sessionPersistence`(RealHistoryCursor) + `MemoryReader`，代码层无 `sessionQuery` 路径 |
+
+## 实现偏离与纠正（2026-08-29）
+
+- **偏离**：`src/index.ts` 注入的 `GraphStore` 唯一实现是 `AxolotlClient`，其契约明确要求对接 `axolotl_rs`（D1：`dec_memory_axolotl_only`）。但此前实跑的 sidecar 是 `sidecar/memory-sidecar.mjs`（Node 纯内存 `Map` + `store.json` JSON 文件），**并非** `server.py`——数据因此躺在内存、外加一个 JSON 文件，直接违反"否文件式记忆"。`IMPLEMENTATION.md` 原"✅ 全部跑通真实 axolotl_rs"属不实陈述。
+- **纠正**：删除 `memory-sidecar.mjs` / `store.json` / `config-default.json`；`server.py`（真 axolotl 后端）现为唯一进程，由 lobster-memory venv 的 `axolotl_rs` 驱动；每个假人 = 独立 `<root>/<id>.axeb` 图文件，meta 与 default 选择器也存进 axolotl（非文件），session 绑定为内存态路由。`dev-up.sh` 已改为启动 `server.py`。
+- **验证**：建实例→setMeta→节点/边→query/recall/consolidate→default/session→DELETE 全通；**杀掉 server.py 重启后数据从 `.axeb` 磁盘还原**，删除后重启不复活。证明数据在图库，不在内存。
+- 旧内存桩曾持有的实例（林夏、ysj 等）已随桩进程重启清空，需重新创建。
 
 ## 文件地图
 

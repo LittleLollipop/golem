@@ -95,4 +95,13 @@ export class GolemRemoteService extends TypertRemoteService {
         fail("default-instance-write-failed", error instanceof Error ? error.message : String(error)),
     );
   }
+
+  @Remote("deleteInstance")
+  deleteInstance(id: InstanceId): Promise<RemoteResult<null>> {
+    return this.api.deleteInstance(id).then(
+      () => ok(null),
+      (error) =>
+        fail("instance-delete-failed", error instanceof Error ? error.message : String(error)),
+    );
+  }
 }

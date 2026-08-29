@@ -13,6 +13,7 @@ export interface GolemApi {
   setInstanceMeta(id: string, patch: Partial<InstanceMeta>): Promise<InstanceMeta>
   getDefaultInstance(): Promise<string | null>
   setDefaultInstance(id: string): Promise<null>
+  deleteInstance(id: string): Promise<null>
 }
 
 /**
@@ -51,5 +52,6 @@ export function createGolemApi(remote: GolemRemoteApi): GolemApi {
     setInstanceMeta: (id, patch) => remote.setInstanceMeta(id, patch).then(unwrap),
     getDefaultInstance: () => remote.getDefaultInstance().then(unwrap),
     setDefaultInstance: (id) => remote.setDefaultInstance(id).then(unwrap),
+    deleteInstance: (id) => remote.deleteInstance(id).then(unwrap),
   }
 }

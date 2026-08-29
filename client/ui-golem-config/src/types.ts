@@ -23,5 +23,6 @@ export interface GolemRemoteApi {
   getInstanceMeta(id: string): Promise<RemoteResult<InstanceMeta | null>>
   setInstanceMeta(id: string, patch: Partial<InstanceMeta>): Promise<RemoteResult<InstanceMeta>>
   getDefaultInstance(): Promise<RemoteResult<string | null>>
-  setDefaultInstance(id: string): Promise<RemoteResult<void>>
+  setDefaultInstance(id: string): Promise<RemoteResult<null>>
+  deleteInstance(id: string): Promise<RemoteResult<null>>
 }

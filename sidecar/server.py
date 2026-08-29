@@ -7,6 +7,15 @@ The ONLY process that touches axolotl_rs. One graph file per golem instance
 plugin's AxolotlClient. No file/markdown memory or logs — axolotl is the single
 source of truth (dec_memory_axolotl_only).
 
+Persistence model:
+  - Memory (nodes/edges)        -> per-instance `<id>.axeb` axolotl graph file.
+  - Instance metadata (name/    -> stored INSIDE the instance's own .axeb graph
+    persona/personaLen/...)       as a `__meta__` vertex (still axolotl, not a file).
+  - Default-instance selector   -> stored in a `__config__.axeb` axolotl graph.
+  - Session -> instance binding -> in-memory routing table (ephemeral; not the
+                                    golem's accumulated memory, so D1 does not
+                                    forbid it; dsh rebinds on new session anyway).
+
 Run:
     python server.py --root ~/.fakeren/instances --port 8741
 
@@ -22,6 +31,7 @@ import logging
 import os
 import random
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
@@ -36,6 +46,9 @@ DECAY_FACTOR = 0.9
 DECAY_THRESHOLD = 0.15
 GROWTH_PROB = 0.15
 MANIFEST_ID = "__edges__"
+META_VERTEX_ID = "__meta__"
+CONFIG_INSTANCE = "__config__"
+DEFAULT_VERTEX_ID = "__default__"
 
 
 def sid(s: str) -> int:
@@ -103,6 +116,27 @@ class InstanceGraph:
         })
         self._save_edges()
 
+    # ── instance metadata (lives in the same axolotl graph, not a file) ──
+    def get_meta(self) -> dict | None:
+        raw = self._g.get_vertex(sid(META_VERTEX_ID))
+        if raw is None:
+            return None
+        mj = flat(raw).get("meta_json")
+        if not mj:
+            return None
+        try:
+            return json.loads(mj)
+        except Exception:
+            return None
+
+    def set_meta(self, meta: dict):
+        self._g.add_vertex(
+            sid(META_VERTEX_ID),
+            {"id": META_VERTEX_ID, "label": "meta", "type": "__meta__", "status": "live",
+             "meta_json": json.dumps(meta, ensure_ascii=False)},
+        )
+        self._g.save()
+
     # ── read ─────────────────────────────────────────────
     def _all_nodes(self):
         out = []
@@ -111,7 +145,7 @@ class InstanceGraph:
             if raw is None:
                 continue
             p = flat(raw)
-            if p.get("type") in ("root", "manifest"):
+            if p.get("type") in ("root", "manifest", "__meta__"):
                 continue
             out.append(p)
         return out
@@ -222,7 +256,8 @@ class Sidecar:
         self._root = root
         os.makedirs(root, exist_ok=True)
         self._cache: dict[str, InstanceGraph] = {}
-        self._lock = __import__("threading").Lock()
+        self._lock = threading.Lock()
+        self._sessions: dict[str, str] = {}  # sessionId -> instanceId (ephemeral routing)
 
     def graph(self, instance_id: str) -> InstanceGraph:
         with self._lock:
@@ -246,6 +281,77 @@ class Sidecar:
         with self._lock:
             out.update(self._cache.keys())
         return sorted(out)
+
+    # ── instance metadata ──
+    def get_meta(self, instance_id: str) -> dict | None:
+        if not os.path.exists(os.path.join(self._root, f"{instance_id}.axeb")):
+            return None
+        return self.graph(instance_id).get_meta()
+
+    def set_meta(self, instance_id: str, meta: dict):
+        g = self.graph(instance_id)
+        meta = dict(meta)
+        meta["id"] = instance_id
+        g.set_meta(meta)
+
+    def list_meta(self):
+        out = []
+        for iid in self.instances():
+            m = self.get_meta(iid)
+            if m is not None:
+                out.append(m)
+        return out
+
+    # ── default-instance selector (stored in a dedicated axolotl graph) ──
+    def get_default(self) -> str | None:
+        g = self.graph(CONFIG_INSTANCE)
+        raw = g._g.get_vertex(sid(DEFAULT_VERTEX_ID))
+        if raw is None:
+            return None
+        return flat(raw).get("instanceId")
+
+    def set_default(self, instance_id: str):
+        g = self.graph(CONFIG_INSTANCE)
+        g._g.add_vertex(sid(DEFAULT_VERTEX_ID),
+                        {"id": DEFAULT_VERTEX_ID, "label": "default", "type": "__config__",
+                         "status": "live", "instanceId": instance_id})
+        g.save()
+
+    # ── session binding (ephemeral routing) ──
+    def bind(self, session_id: str, instance_id: str):
+        with self._lock:
+            self._sessions[session_id] = instance_id
+
+    def resolve(self, session_id: str) -> str | None:
+        with self._lock:
+            return self._sessions.get(session_id)
+
+    # ── delete an instance entirely (meta + memory graph + bindings) ──
+    def delete_instance(self, instance_id: str) -> bool:
+        with self._lock:
+            g = self._cache.pop(instance_id, None)
+        if g is not None:
+            try:
+                g.close()
+            except Exception:
+                pass
+        removed = False
+        for suffix in (".axeb", ".axeb.lock"):
+            p = os.path.join(self._root, instance_id + suffix)
+            if os.path.exists(p):
+                os.remove(p)
+                removed = True
+        # drop any session bindings to the deleted instance
+        with self._lock:
+            for sid_key in [k for k, v in self._sessions.items() if v == instance_id]:
+                del self._sessions[sid_key]
+        # also clear default if it pointed here (but never touch the config
+        # instance itself via get_default, which would lazily recreate it)
+        if instance_id != CONFIG_INSTANCE and self.get_default() == instance_id:
+            dp = os.path.join(self._root, CONFIG_INSTANCE + ".axeb")
+            if os.path.exists(dp):
+                os.remove(dp)
+        return removed
 
     def close_all(self):
         with self._lock:
@@ -274,15 +380,26 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    # ── GET ──
     def do_GET(self):
         p = urlparse(self.path)
         parts = [x for x in p.path.split("/") if x]
         if p.path.rstrip("/") == "/instances":
             return self._send(self.sidecar.instances())
+        if p.path.rstrip("/") == "/instances/meta":
+            return self._send(self.sidecar.list_meta())
+        if len(parts) == 2 and parts[1] == "meta":
+            m = self.sidecar.get_meta(parts[0])
+            if m is None:
+                return self._send({"error": "not found"}, 404)
+            return self._send(m)
         if len(parts) == 2 and parts[1] == "stats":
             return self._send(self.sidecar.graph(parts[0]).stats(parts[0]))
+        if p.path.rstrip("/") == "/config/default":
+            return self._send({"instanceId": self.sidecar.get_default()})
         return self._send({"error": "not found"}, 404)
 
+    # ── POST ──
     def do_POST(self):
         p = urlparse(self.path)
         parts = [x for x in p.path.split("/") if x]
@@ -291,6 +408,11 @@ class Handler(BaseHTTPRequestHandler):
             if p.path.rstrip("/") == "/instance/create":
                 self.sidecar.ensure(body["id"])
                 return self._send({"ok": True, "id": body["id"]})
+            if p.path.rstrip("/") == "/session/bind":
+                self.sidecar.bind(body["sessionId"], body["instanceId"])
+                return self._send({"ok": True})
+            if p.path.rstrip("/") == "/session/resolve":
+                return self._send({"instanceId": self.sidecar.resolve(body.get("sessionId"))})
             if len(parts) == 2:
                 inst, op = parts[0], parts[1]
                 g = self.sidecar.graph(inst)
@@ -306,6 +428,40 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(g.cross_domain(inst, body.get("limit", 200)))
                 if op == "consolidate":
                     return self._send(g.consolidate(inst, body.get("budget", 50)))
+                if op == "meta":
+                    self.sidecar.set_meta(inst, body); return self._send({"ok": True})
+            return self._send({"error": "not found"}, 404)
+        except Exception as e:  # pragma: no cover
+            logger.exception("request failed")
+            return self._send({"error": str(e)}, 500)
+
+    # ── PUT ──
+    def do_PUT(self):
+        p = urlparse(self.path)
+        parts = [x for x in p.path.split("/") if x]
+        body = self._body()
+        try:
+            if p.path.rstrip("/") == "/config/default":
+                self.sidecar.set_default(body["instanceId"])
+                return self._send({"ok": True})
+            if len(parts) == 2 and parts[1] == "meta":
+                self.sidecar.set_meta(parts[0], body)
+                return self._send({"ok": True})
+            return self._send({"error": "not found"}, 404)
+        except Exception as e:  # pragma: no cover
+            logger.exception("request failed")
+            return self._send({"error": str(e)}, 500)
+
+    # ── DELETE ──
+    def do_DELETE(self):
+        p = urlparse(self.path)
+        parts = [x for x in p.path.split("/") if x]
+        try:
+            if len(parts) == 1:
+                removed = self.sidecar.delete_instance(parts[0])
+                if removed:
+                    return self._send({"ok": True})
+                return self._send({"ok": True, "removed": False})
             return self._send({"error": "not found"}, 404)
         except Exception as e:  # pragma: no cover
             logger.exception("request failed")
@@ -322,7 +478,7 @@ def main():
     sc = Sidecar(args.root)
     Handler.sidecar = sc
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
-    logger.info("golem sidecar on http://%s:%d  root=%s", args.host, args.port, args.root)
+    logger.info("golem sidecar on http://%s:%d  root=%s (axolotl_rs backend)", args.host, args.port, args.root)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

@@ -1,6 +1,6 @@
 {
   "name": "golem-client-ui-config",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Golem 多假人设置面板：注册进 dsh 基座设置面板的 settings.section，数据走 dsh remote 通道（ctx.remote.golem.*）。",
   "type": "module",
   "main": "lib/index.js",

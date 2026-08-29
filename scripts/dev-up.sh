@@ -5,7 +5,11 @@
 set -u
 
 GOLEM_DIR="/Users/sai/WorkBuddy/dev/golem"
-DSH_SRC="/tmp/dsh-src"
+# ⚠️ 必须是持久目录。历史坑：曾用 /tmp/dsh-src，被系统回收后 client/*/node_modules
+# 里 265+ 条软链（tsdown / typescript / vitest / react / @deepseek-ai/*）集体断裂，
+# 表现为「构建与测试链整体不可用 + dsh web 起不来」。不要再退回 /tmp。
+# dsh 是开源仓库，丢了可重建：git clone --depth 1 https://github.com/deepseek-ai/deepseek-harness.git
+DSH_SRC="/Users/sai/WorkBuddy/dev/dsh-src"
 SIDECAR_PORT=8741
 DSH_PORT=3080
 
@@ -14,10 +18,12 @@ port_free() { ! lsof -iTCP:"$1" -sTCP:LISTEN -P >/dev/null 2>&1; }
 echo "[dev-up] golem dir   : $GOLEM_DIR"
 echo "[dev-up] dsh src    : $DSH_SRC"
 
-# --- sidecar ---
+# --- sidecar (真 axolotl 后端: server.py, 依赖 lobster-memory venv 的 axolotl_rs) ---
+# 注意: 这是唯一碰 axolotl_rs 的进程; 实例记忆落 <root>/<id>.axeb 图文件。
+AXOLOTL_PY="/Users/sai/.workbuddy/venvs/lobster-memory/bin/python"
 if port_free "$SIDECAR_PORT"; then
-  ( cd "$GOLEM_DIR" && node sidecar/memory-sidecar.mjs > /tmp/golem-sidecar.log 2>&1 & )
-  echo "[dev-up] sidecar starting on :$SIDECAR_PORT ..."
+  ( cd "$GOLEM_DIR" && "$AXOLOTL_PY" sidecar/server.py --root ~/.fakeren/instances --port "$SIDECAR_PORT" > /tmp/golem-sidecar.log 2>&1 & )
+  echo "[dev-up] sidecar (axolotl) starting on :$SIDECAR_PORT ..."
 else
   echo "[dev-up] sidecar :$SIDECAR_PORT already listening, skip"
 fi
@@ -29,6 +35,17 @@ if port_free "$DSH_PORT"; then
   echo "[dev-up] building golem dist ..."
   ( cd "$GOLEM_DIR" && npm run build > /tmp/golem-build.log 2>&1 )
   echo "[dev-up] build exit=$? (see /tmp/golem-build.log)"
+  # 浏览器侧加载的是 client 包的【已构建 bundle】(lib/client.js)，不是 src/。
+  # 只改 client/*/src 而不重新 bundle，页面行为不会变——历史坑：「保存人格」
+  # 静默存空串的修复曾因此看不出效果。所以每次拉起都强制重打两个 client 包。
+  echo "[dev-up] bundling golem client packages ..."
+  for p in ui-golem-config ui-golem-remote; do
+    if ( cd "$GOLEM_DIR/client/$p" && node node_modules/tsdown/dist/run.mjs >> /tmp/golem-build.log 2>&1 ); then
+      echo "[dev-up]   $p bundled"
+    else
+      echo "[dev-up]   $p bundle FAILED (see /tmp/golem-build.log)"
+    fi
+  done
   rm -f /tmp/fakeren-prestep.log
   ( cd "$DSH_SRC" && node --import tsx/esm apps/cli/src/bin.ts web \
       --patch "$GOLEM_DIR/golem-cordis.yml" --no-open > /tmp/golem-dsh.log 2>&1 & )
@@ -42,4 +59,11 @@ sleep 4
 echo "[dev-up] --- health ---"
 curl -s -o /dev/null -w "sidecar :$SIDECAR_PORT -> %{http_code}\n" "http://127.0.0.1:$SIDECAR_PORT/" || true
 curl -s -o /dev/null -w "dsh     :$DSH_PORT -> %{http_code}\n" "http://127.0.0.1:$DSH_PORT/" || true
-echo "[dev-up] done. 打开 http://127.0.0.1:3080 即可对话"
+# dsh web 每次启动生成新 token，不带 token 打不开；直接把带 token 的 URL 打出来。
+TOKEN_URL=$(grep -o "http://127.0.0.1:$DSH_PORT/?token=[A-Za-z0-9_.~-]*" /tmp/golem-dsh.log 2>/dev/null | tail -1)
+if [ -n "$TOKEN_URL" ]; then
+  echo "[dev-up] web URL: $TOKEN_URL"
+else
+  echo "[dev-up] 未从 /tmp/golem-dsh.log 抓到 token URL，请自行查看该日志"
+fi
+echo "[dev-up] done."

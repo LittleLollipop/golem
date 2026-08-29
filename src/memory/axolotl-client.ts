@@ -125,4 +125,13 @@ export class AxolotlClient implements GraphStore {
   async setDefaultInstance(id: InstanceId): Promise<void> {
     await this.put<void>(`/config/default`, { instanceId: id });
   }
+
+  async deleteInstance(id: InstanceId): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (res.status === 404) return; // already gone — idempotent
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`axolotl sidecar DELETE /${id} -> ${res.status}: ${text}`);
+    }
+  }
 }

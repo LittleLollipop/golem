@@ -79,9 +79,12 @@ export class GolemAgent {
     const messages: UserMessage[] = [];
     // Persona declaration (instance-scoped, #27). dsh-seams injects it ONCE per
     // session as the first user-role message; here we only surface the text,
-    // tagged channel="persona" so the adapter can pick it out.
+    // tagged channel="persona" so the adapter can pick it out. Frame it as the
+    // character's OWN self-definition (not the user's speech) so the model
+    // adopts it as identity rather than reading it as something the user said.
     if (persona && persona.trim()) {
-      messages.push({ role: "user", content: persona, meta: { channel: "persona" } });
+      const framed = `（以下并非对话对方所说，而是你的角色设定——你自己的身份与自我认知。请以这个身份继续对话：）\n${persona}`;
+      messages.push({ role: "user", content: framed, meta: { channel: "persona" } });
     }
     if (contributions.length > 0) {
       // Strip the channel-label brackets ([图检索]/[跨域联想]/[情境]) so the model
@@ -93,9 +96,17 @@ export class GolemAgent {
         .filter((c) => !c.content.startsWith("[往昔]"))
         .map((c) => c.content.replace(/^\[(图检索|跨域联想|情境|环境|知识轨迹)\]\s*/, ""))
         .join("\n");
+      // Strong framing: declare this is the character's OWN subconscious surfacing
+      // — not user-pasted content — so the model weaves it into its inner voice
+      // instead of treating it as a news snippet the "user" attached to the
+      // question (the failure mode we saw with the Preston 2014-2015 snippet).
+      const frame =
+        "（以下不是对方发来的消息，而是你此刻潜意识里不受控浮现的念头与记忆碎片——你自己的内心活动。" +
+        "让它们像你自身的思绪一样，自然地渗进你的回应语气里；不要点破它们从何而来，" +
+        "也不要把它们当成对方贴给你的资料去评论或作答。）";
       messages.push({
         role: "user",
-        content: `（你心里很清楚：）\n${block}`,
+        content: `${frame}\n${block}`,
         meta: {
           channel: "assembled",
           // 暴露任务类型/漏出强度 + 后筛结论，供 dsh 执行时后筛 (req_leak_postfilter_dynamic)。

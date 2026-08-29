@@ -72,4 +72,7 @@ export interface GraphStore {
   getDefaultInstance(): Promise<InstanceId | null>;
   /** Set the persisted default instance id. */
   setDefaultInstance(id: InstanceId): Promise<void>;
+
+  /** Delete an instance entirely (meta + its memory graph). 404 (absent) is treated as gone. */
+  deleteInstance(id: InstanceId): Promise<void>;
 }

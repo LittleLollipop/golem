@@ -75,6 +75,11 @@ export class GolemInstanceApi {
     return this.store.getDefaultInstance();
   }
 
+  /** 删除一个假人实例（含其记忆图与 meta）。default 实例受 sidecar 保护会失败。 */
+  async deleteInstance(id: InstanceId): Promise<void> {
+    await this.registry.delete(id);
+  }
+
   /** 设置默认实例 id（供新会话默认选中，req_iso_session_select）。 */
   async setDefaultInstance(id: InstanceId): Promise<void> {
     await this.store.setDefaultInstance(id);
