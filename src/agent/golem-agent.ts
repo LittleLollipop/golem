@@ -44,6 +44,7 @@ export class GolemAgent {
     userText: string,
     instanceId: InstanceId,
     persona?: string,
+    sessionId?: string,
   ): Promise<{
     messages: UserMessage[];
     assess: TaskAssessment;
@@ -55,7 +56,7 @@ export class GolemAgent {
 
     // 漏出强度由任务类型决定（非问句强度）：执行命令零漏，创作强漏。
     if (assess.leakLevel === "weak" || assess.leakLevel === "strong") {
-      raw.push(...(await this.drift.gather(instanceId)));
+      raw.push(...(await this.drift.gather(instanceId, undefined, sessionId)));
     }
     if (assess.leakLevel === "strong") {
       raw.push(...(await this.situational.gather(userText, instanceId)));

@@ -44,7 +44,7 @@ export class DriftChannel {
     return this.state;
   }
 
-  async gather(instanceId: InstanceId, limit = 3): Promise<ChannelContribution[]> {
+  async gather(instanceId: InstanceId, limit = 3, sessionId?: string): Promise<ChannelContribution[]> {
     this.state = "gathering";
     const out: ChannelContribution[] = [];
     // 按源分段计数，供后台调度日志记录"漂了什么"（req_background_task_log）
@@ -128,8 +128,9 @@ export class DriftChannel {
 
     // (4) L0.5 每日知识轨迹 (req_l05_knowledge_trajectory): the recent daily
     //     learned facts, each carrying its source citation + selection path.
+    //     sessionId drives per-session dedup of learned facts (user 2026-08-29).
     if (this.l05) {
-      for (const s of this.l05.seedCandidates(instanceId, this.leak.l05Limit)) {
+      for (const s of this.l05.seedCandidates(instanceId, this.leak.l05Limit, sessionId)) {
         const prov = s.provenance;
         out.push({
           channel: "drift",

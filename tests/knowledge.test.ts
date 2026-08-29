@@ -130,9 +130,50 @@ describe("L05Trajectory (req_l05 drift seeds)", () => {
     expect(res?.random).not.toBeUndefined();
     const seeds = l05.seedCandidates("instA", 4);
     expect(seeds.length).toBeGreaterThan(0);
-    expect(seeds[0].observationText).toContain("来源");
+    // keyword-only pointer: visible text is the title, NOT the summary+source
+    expect(seeds[0].observationText).toBe(res!.random!.title);
+    expect(seeds[0].observationText).not.toContain(res!.random!.summary);
+    expect(seeds[0].observationText).not.toContain("来源");
     expect(seeds[0].seedId).toBe(`l05_${res!.random!.id}`);
     expect(seeds[0].meta?.sourceUrl).toBe(res!.random!.sourceUrl);
     expect(seeds[0].provenance?.selectionPath).toBe(res!.random!.selectionPath);
+  });
+
+  it("per-session dedup: same fact leaks once per session, not every turn", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "golem-l05-dedup-"));
+    const tr = new DailyKnowledgeTracker(
+      new StaticKnowledgeSource(),
+      new KnowledgeSourceRegistry({ static: new StaticKnowledgeSource() }, "static"),
+      dir,
+    );
+    const l05 = new L05Trajectory(tr);
+    await l05.tick("instA");
+    // first turn of session A → leaks
+    expect(l05.seedCandidates("instA", 4, "sessA").length).toBe(1);
+    // same session, later turn → suppressed (no repeat)
+    expect(l05.seedCandidates("instA", 4, "sessA").length).toBe(0);
+    // a different (new) session → can remind once again
+    expect(l05.seedCandidates("instA", 4, "sessB").length).toBe(1);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("freshness gate: a learned fact ages out of the ambient leak after freshDays", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "golem-l05-fresh-"));
+    const T0 = Date.UTC(2026, 0, 1, 0, 0, 0);
+    const DAY = 24 * 3600 * 1000;
+    const tr = new DailyKnowledgeTracker(
+      new StaticKnowledgeSource(),
+      new KnowledgeSourceRegistry({ static: new StaticKnowledgeSource() }, "static"),
+      dir,
+      undefined,
+      () => new Date(T0),
+    );
+    const l05 = new L05Trajectory(tr); // default freshDays = 1
+    await l05.tick("instA");
+    // at learn time → fresh, leaks
+    expect(l05.seedCandidates("instA", 4, undefined, T0).length).toBe(1);
+    // >1 day later → no longer an ambient seed (still in recall graph)
+    expect(l05.seedCandidates("instA", 4, undefined, T0 + 2 * DAY).length).toBe(0);
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });

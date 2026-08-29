@@ -22,6 +22,11 @@ export interface LeakConfig {
   ambientLimit: number;
   /** L0.5 knowledge-trajectory seeds */
   l05Limit: number;
+  /** L0.5 freshness window (days): a learned fact stays an ambient drift seed
+   *  only this long after it was learned; older facts drop out of the auto-leak
+   *  (they remain in the recall graph, retrievable via memory_recall).
+   *  Prevents "yesterday's fact" from interfering forever (user 2026-08-29). */
+  l05FreshDays: number;
   /** probability [0..1] of injecting any leakage at all (trigger probability) */
   triggerProbability: number;
   /** minimum valence weight for a drift seed to survive (0 = no filter) */
@@ -39,6 +44,7 @@ export function loadLeakConfig(): LeakConfig {
     driftLimit: num(process.env.FAKEREN_LEAK_DRIFT, 3),
     ambientLimit: num(process.env.FAKEREN_LEAK_AMBIENT, 2),
     l05Limit: num(process.env.FAKEREN_LEAK_L05, 2),
+    l05FreshDays: num(process.env.FAKEREN_LEAK_L05_FRESH_DAYS, 1),
     triggerProbability: (() => {
       const v = Number(process.env.FAKEREN_LEAK_TRIGGER_P);
       return Number.isFinite(v) && v >= 0 && v <= 1 ? v : 1;

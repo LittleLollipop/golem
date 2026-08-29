@@ -148,12 +148,13 @@ export function apply(ctx: DshContext, config: GolemConfig = {}): void {
       })
     : undefined;
   knowledgeTracker = new DailyKnowledgeTracker(randomSource, knowledgeRegistry, knowledgeDir, planner);
-  const l05 = new L05Trajectory(knowledgeTracker, 7, schedulerLog);
+  const leakCfg = loadLeakConfig();
+  const l05 = new L05Trajectory(knowledgeTracker, 7, schedulerLog, leakCfg.l05FreshDays);
   console.log(
     `[golem] L0.5 = dual-track (random: wikipedia/random + purposeful: ${planner ? "model-planned[wiki/news/social/web]" : "no-LLM → 记 empty 状态"})`,
   );
 
-  const drift = new DriftChannel(reader, dsh, registry, ambientSource.getBuffer(), l05, loadLeakConfig(), schedulerLog);
+  const drift = new DriftChannel(reader, dsh, registry, ambientSource.getBuffer(), l05, leakCfg, schedulerLog);
   const recall = new RecallChannel(new GraphRecallSource(reader));
   const situational = new SituationalChannel();
 
@@ -198,7 +199,7 @@ export function apply(ctx: DshContext, config: GolemConfig = {}): void {
     const persona = meta?.persona ?? DEFAULT_PERSONA;
 
     const userText = ev.claimed.map((m) => m.content).join("\n");
-    const res = await agent.assemble(ev.claimed, userText, instanceId, persona);
+    const res = await agent.assemble(ev.claimed, userText, instanceId, persona, ev.sessionId);
     // 执行时后筛：歧义时主动交用户双候选（req_leak_postfilter_dynamic）。
     if (res.postFilter?.userPrompt) {
       try {

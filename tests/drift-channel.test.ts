@@ -58,7 +58,10 @@ describe("DriftChannel L0.5 knowledge trajectory (req_l05_knowledge_trajectory)"
     const out = await ch.gather("instA");
     const k = out.filter((c) => c.content.startsWith("[知识轨迹]"));
     expect(k).toHaveLength(1);
-    expect(k[0].content).toContain("来源");
+    // keyword-only pointer: visible text is the title, NOT the summary+source
+    expect(k[0].content).toContain(learned!.title);
+    expect(k[0].content).not.toContain("来源");
+    expect(k[0].content).not.toContain(learned!.summary);
     expect(k[0].meta).toMatchObject({ chosenRank: 1, selectionPath: "随机选 (rank 1, 来源 Wikipedia)" });
     // 种子溯源 (req_seed_provenance)：L0.5 来源 URL + 选择路径已挂到 provenance
     expect(k[0].provenance?.source).toMatch(/^https?:\/\//);
