@@ -133,23 +133,44 @@ export class DshAdapter {
           );
         }
       }
+      // dsh numbers steps WITHIN a turn: step 1 is the turn's user-facing opening
+      // (the user's prompt enters), step >= 2 are tool-loop continuations. We use
+      // this to suppress the subconscious leak on every non-first step (bug
+      // reported 2026-08-29 — one leak was injected per search call).
+      const step = typeof ev?.step === "number" ? ev.step : undefined;
+      const turn = typeof ev?.turn === "number" ? ev.turn : undefined;
       // dsh message → our domain shape. dsh content is ContentBlock[]; flatten
       // to plain text for the assemble fn (recall/drift/grade all work on text).
       const claimed: UserMessage[] = (ev?.messages ?? []).map((m: any) => ({
         role: "user" as const,
         content: toText(m?.content),
       }));
-      pLog(`[golem:pre-step] enter session=${sessionId} claimed=${claimed.length}`);
+      pLog(
+        `[golem:pre-step] enter session=${sessionId} turn=${turn ?? "?"} step=${step ?? "?"} claimed=${claimed.length}`,
+      );
+
+      // On a tool-loop continuation (step >= 2) the model is reasoning/retrieving,
+      // NOT addressing the user. Skip assemble() entirely: it only produces
+      // persona/leak blocks we would discard, and its drift/recall/situational
+      // gathers hit the sidecar for nothing. The leak is a per-turn *expression*
+      // layer for replies to the USER, so it rides only the step-1 opening.
+      const isToolContinuation = step !== undefined && step > 1;
 
       // The assemble fn touches the axolotl sidecar (registry/recall/drift).
       // If the sidecar is down it throws — never let that crash the dsh process.
       let augmented: UserMessage[] = claimed;
-      try {
-        augmented = await fn({ sessionId, claimed });
-      } catch (err) {
+      if (isToolContinuation) {
         pLog(
-          `[golem:pre-step] WARNING: assemble threw, injecting nothing (agent still runs): ${String(err)}`,
+          `[golem:pre-step] tool-continuation (turn=${turn ?? "?"} step=${step ?? "?"}) → skip assemble + leak`,
         );
+      } else {
+        try {
+          augmented = await fn({ sessionId, claimed });
+        } catch (err) {
+          pLog(
+            `[golem:pre-step] WARNING: assemble threw, injecting nothing (agent still runs): ${String(err)}`,
+          );
+        }
       }
 
       // dsh requires content as ContentBlock[] (NOT a bare string). Wrap each
@@ -160,7 +181,9 @@ export class DshAdapter {
       //
       // The agent surfaces two synthetic blocks: a per-instance persona
       // (channel "persona") injected ONCE per session, and the subconscious
-      // leak block (channel "assembled") injected every turn.
+      // leak block (channel "assembled") injected on the step-1 opening of each
+      // turn. On tool-loop continuations (step >= 2) assemble() was skipped, so
+      // augmented === claimed and neither block is present → nothing leaks.
       const personaBlock = augmented.find(
         (m) => m.meta && (m.meta as any).channel === "persona",
       );

@@ -67,3 +67,62 @@ describe("DshAdapter.onPreStep — message source hygiene", () => {
     }
   });
 });
+
+describe("DshAdapter.onPreStep — tool-loop leak suppression (2026-08-29)", () => {
+  /** Assemble stub returning one leak + one persona block, like the real agent. */
+  function makeAssemble() {
+    const calls = { count: 0 };
+    const fn = async () => {
+      calls.count++;
+      return [
+        {
+          role: "user" as const,
+          content: "（你心里很清楚：）\nleak fragment",
+          meta: { channel: "assembled" },
+        },
+        {
+          role: "user" as const,
+          content: "persona text",
+          meta: { channel: "persona" },
+        },
+      ];
+    };
+    return { fn, calls };
+  }
+
+  async function runPreStep(ev: any) {
+    const { ctx, getPreStep } = makeMockCtx();
+    const adapter = new DshAdapter(ctx);
+    const { fn, calls } = makeAssemble();
+    adapter.onPreStep(fn);
+    const decision = await getPreStep()!(ev, () => {});
+    return { calls, decision };
+  }
+
+  it("skips assemble() and injects no leak on a tool-loop continuation (step >= 2)", async () => {
+    const { calls, decision } = await runPreStep({
+      agent: { session: "s-tool-loop-1" },
+      messages: [{ role: "user", content: [{ type: "text", text: "tool result" }] }],
+      turn: 1,
+      step: 2,
+    });
+    // the whole point: don't spin the sidecar or leak on every search call
+    expect(calls.count).toBe(0);
+    const injected = (decision.messages as any[]).filter((m) => m.source?.fakeren);
+    expect(injected.length).toBe(0);
+  });
+
+  it("still assembles and injects the leak on the turn-opening step (step === 1)", async () => {
+    const { calls, decision } = await runPreStep({
+      agent: { session: "s-tool-loop-2" },
+      messages: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+      turn: 1,
+      step: 1,
+    });
+    expect(calls.count).toBe(1);
+    const leaked = (decision.messages as any[]).filter(
+      (m) => m.source?.fakeren?.kind === "subconscious",
+    );
+    expect(leaked.length).toBe(1);
+  });
+});
