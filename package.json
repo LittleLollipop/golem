@@ -1,6 +1,6 @@
 {
   "name": "golem",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "假人 — dsh plugin: ambient leakage (L0/L0.5/L1) over an axolotl-backed self-memory, isolated per-instance.",
