@@ -82,4 +82,19 @@ describe("createMemoryRecallTool", () => {
     const res = await tool.execute({ query: "x" }, { agent: { session: { id: "sess-1" } } });
     expect(res).toContain("没有与检索词相关");
   });
+
+  it("parameters is an object-rooted JSON Schema (regression: dsh rejects non-object roots)", () => {
+    const tool = createMemoryRecallTool(deps({}));
+    const p = (tool as any).parameters;
+    // Root MUST declare type:"object" + properties; dsh forwards this verbatim
+    // to the model provider, which rejects roots without type:"object".
+    expect(p).toBeDefined();
+    expect(p.type).toBe("object");
+    expect(p.properties).toBeDefined();
+    expect(p.properties.query).toBeDefined();
+    expect(p.properties.query.type).toBe("string");
+    expect(Array.isArray(p.required) && p.required).toContain("query");
+    // The property must NOT be a top-level key on the schema root.
+    expect(p.query).toBeUndefined();
+  });
 });

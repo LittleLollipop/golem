@@ -38,9 +38,25 @@ export function createMemoryRecallTool(deps: MemoryRecallDeps) {
     name: "memory_recall",
     description:
       "回想你自己的记忆图：用检索词拉回相关的往昔对话与心事。每回合最多调用 3 次，只在确有需要、且指针提示里有对应记忆时才调用；优先回想最相关的一条。",
+    // NOTE: dsh passes `parameters` DIRECTLY to the model as a JSON Schema
+    // object (it does NOT auto-wrap a property map the way defineTool does).
+    // The root MUST be { type: "object", properties, required } — otherwise the
+    // provider rejects it with:
+    //   Invalid schema for function 'memory_recall': schema must be a JSON
+    //   Schema of 'type: "object"', got 'type: null'.
     parameters: {
-      query: { type: "string", required: true },
-      limit: { type: "number", required: false },
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "检索词，用于拉回相关的记忆节点（如人物名、事件关键词）。",
+        },
+        limit: {
+          type: "number",
+          description: "最多返回多少条记忆，默认 5，建议 1–8。",
+        },
+      },
+      required: ["query"],
     },
     output: {
       schema: { type: "string" },
