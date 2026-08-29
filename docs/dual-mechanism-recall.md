@@ -180,3 +180,26 @@ apply(ctx) {
 - **运行时验证**：`npm run build` 零错；dsh web 启动日志确认 `[golem] registered tool: memory_recall`；实例经 `:3080` 正常鉴权起。S3（tool_result 渲染）由构造保证——`memory_recall` 是 dsh 原生工具、走普通 tool 消息，指针块为 `golem-recall` 内联块，二者视觉区分。
 
 *本设计文档已评审通过（v0.2）并落地，由龙虾按 §9 实施。*
+
+---
+
+## 11. 召回质量与默认行为修正（2026-08-29 第二批，跟进验收）
+
+用户实测发现：给模型具体词（「卷一·不嫁」）时，模型没先查记忆、反而去 grep 文件系统。排查定位三层问题，本批一并修复。
+
+### 11.1 根因
+1. **指针无相关性排序**：sidecar `recall` 按图遍历顺序返回命中，无匹配度。用户点名的 `卷一·不嫁` 排到第 ~8 位被 `slice(0, limit)` 切掉，指针块里根本没它的提示 → 模型无从想起。
+2. **默认行为未改**：模型没有"先查记忆再查外部"的硬约束，遇到具体词直接 grep 文件。
+3. **记忆持久化 bug（隐藏根因）**：`sidecar/server.py` 的 `add_node`/`add_edge` 写完不 `save()`，只有 `set_meta`/`consolidate`/`close` 才落盘。sidecar 被 kill（如本批多次重启）时，最近写入的节点（含 `卷一·不嫁`）**直接丢失**——这才是"记忆里没有"的真正原因。
+
+### 11.2 修复
+- **A. 相关性排序**：`RecallChannel.rankNodes()` 按 `标签命中×10 + 命中词特异度(len)×1.5 + 命中覆盖×1` 打分，再按 `weight→timestamp` 兜底；`pointers`/`fetchNodes` 切片前排序。
+- **C. 二跳扩展**：`pointers` 取 top3 anchor 的 1-hop 邻居（`neighbors` 接口，新增 sidecar `POST /{inst}/neighbors` + `GraphStore.neighbors` + `reader`/`axolotl-client`），**插入锚点之后**（集群聚合于顶部，不被 slice 切掉），provenance 标 `(2-hop)`。
+- **默认行为（用户决定）**：`golem-agent.assemble()` 每回合 `step 1` 注入 `MEMORY_FIRST_DIRECTIVE` 块（`channel: operating-directive`，plugin `golem-directive`）："用户提到具体作品/项目/人名/事物时，必须先调 `memory_recall` 再决定要不要搜文件系统/联网"。`recall-pointer` 提示框同步强化护栏(B)。`memory_recall` 工具描述也加"先回忆再查外部"。
+- **持久化**：`add_node`/`add_edge` 末尾加 `self._g.save()`，每次写即落盘。
+
+### 11.3 机器校验
+- 模拟 `pointers("你可以帮我给 卷一·不嫁 写个大纲吗")`：修复后 `卷一·不嫁` 排 #1，二跳拉出「钟无艳/小说梗概/写故事节拍」聚合于顶部。
+- **持久化 kill 测试**：写入 `卷一·不嫁` 后 kill+重启 sidecar，节点仍在（修复前必丢）。
+- `vitest` 179 全绿（新增 `golem-agent.test.ts`；`recall-channel` 加排序/二跳/neighbors；`dsh-seams` 加 `operating-directive` 注入 + 放宽 kind 集合）。
+- 提交 `b2e0beb`（本地，author `Sai <kldtks@live.com>`）。
