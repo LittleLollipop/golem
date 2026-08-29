@@ -53,33 +53,68 @@ function toKeywords(userText: string): string[] {
 export class RecallChannel {
   constructor(private readonly source: RecallSource) {}
 
-  async gather(userText: string, instanceId: InstanceId, limit = 3): Promise<ChannelContribution[]> {
-    const nodes = await this.source.recall(instanceId, toKeywords(userText), limit * 4);
-    return nodes.slice(0, limit).map((n, i) => {
-      // Surface the remembered reply, not just the question label. Prefer the
-      // extractive summary (props.assistantSummary); fall back to the raw reply
-      // for older nodes that predate summarization.
-      const summary =
-        typeof n.props?.assistantSummary === "string" && n.props.assistantSummary.trim().length > 0
-          ? n.props.assistantSummary
-          : typeof n.props?.assistantText === "string"
-            ? n.props.assistantText
-            : "";
-      // Display-time guard: old nodes may carry raw model thinking in either
-      // field. Strip it here so a malformed memory never leaks a monologue,
-      // independent of when/how it was written.
-      const cleanSummary = stripThinking(summary);
-      const summaryLine = cleanSummary ? `\n  ↳ ${cleanSummary}` : "";
-      return {
-        channel: "recall" as const,
-        content: `[图检索] ${n.label}${summaryLine}`,
-        seedId: `recall_${n.id}_${i}`,
-        valence: typeof n.valence === "number" ? n.valence : 0,
-        provenance: {
-          source: `node:${n.id}`,
-          selectionPath: `recall keyword match rank ${i + 1}`,
-        },
-      };
-    });
+  /** Mechanism B (pull): return the raw matched graph nodes for a query. Used by
+   *  the `memory_recall` tool to fetch full content on demand. Over-fetches then
+   *  slices so keyword ranking still applies (dual-mechanism-recall.md §4). */
+  async fetchNodes(query: string, instanceId: InstanceId, limit = 5): Promise<GraphNode[]> {
+    return (await this.source.recall(instanceId, toKeywords(query), limit * 4)).slice(0, limit);
   }
+
+  /** Mechanism B (pull): full content as ChannelContribution[] (the old
+   *  `gather` shape), reusing fetchNodes. */
+  async fetch(query: string, instanceId: InstanceId, limit = 5): Promise<ChannelContribution[]> {
+    return (await this.fetchNodes(query, instanceId, limit)).map((n, i) => buildRecallContribution(n, i));
+  }
+
+  /** Mechanism A (push-hint): only the node labels / keywords, NO full summary.
+   *  Surfaced as a lightweight "memory index" that prompts the model to call
+   *  `memory_recall` for details (dual-mechanism-recall.md §3/§5). */
+  async pointers(userText: string, instanceId: InstanceId, limit = 5): Promise<ChannelContribution[]> {
+    const nodes = await this.source.recall(instanceId, toKeywords(userText), limit * 4);
+    return nodes.slice(0, limit).map((n, i) => ({
+      channel: "recall-pointer" as const,
+      content: n.label,
+      seedId: `recall_ptr_${n.id}_${i}`,
+      valence: typeof n.valence === "number" ? n.valence : 0,
+      provenance: {
+        source: `node:${n.id}`,
+        selectionPath: `recall pointer rank ${i + 1}`,
+      },
+    }));
+  }
+
+  /** Back-compat alias → fetch (full content). The auto-inject path now uses
+   *  `pointers()` instead; kept so external callers/tests referencing gather()
+   *  keep working (dual-mechanism-recall.md). */
+  async gather(userText: string, instanceId: InstanceId, limit = 3): Promise<ChannelContribution[]> {
+    return this.fetch(userText, instanceId, limit);
+  }
+}
+
+/** Build a full-content recall contribution (label + extractive summary). */
+function buildRecallContribution(n: GraphNode, i: number): ChannelContribution {
+  // Surface the remembered reply, not just the question label. Prefer the
+  // extractive summary (props.assistantSummary); fall back to the raw reply
+  // for older nodes that predate summarization.
+  const summary =
+    typeof n.props?.assistantSummary === "string" && n.props.assistantSummary.trim().length > 0
+      ? n.props.assistantSummary
+      : typeof n.props?.assistantText === "string"
+        ? n.props.assistantText
+        : "";
+  // Display-time guard: old nodes may carry raw model thinking in either
+  // field. Strip it here so a malformed memory never leaks a monologue,
+  // independent of when/how it was written.
+  const cleanSummary = stripThinking(summary);
+  const summaryLine = cleanSummary ? `\n  ↳ ${cleanSummary}` : "";
+  return {
+    channel: "recall" as const,
+    content: `[图检索] ${n.label}${summaryLine}`,
+    seedId: `recall_${n.id}_${i}`,
+    valence: typeof n.valence === "number" ? n.valence : 0,
+    provenance: {
+      source: `node:${n.id}`,
+      selectionPath: `recall keyword match rank ${i + 1}`,
+    },
+  };
 }

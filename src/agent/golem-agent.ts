@@ -60,9 +60,12 @@ export class GolemAgent {
     if (assess.leakLevel === "strong") {
       raw.push(...(await this.situational.gather(userText, instanceId)));
     }
-    // Recall (targeted graph retrieval) is ALWAYS on. 执行命令也只保留 recall，
-    // 绝不注入潜意识（严守 rule_mechanism_first 禁编造红线）。
-    raw.push(...(await this.recall.gather(userText, instanceId)));
+    // Recall — dual-mechanism (2026-08-29): the auto-inject path now surfaces
+    // ONLY a lightweight "memory index" (labels, no full summary) via pointers().
+    // The model pulls full content on demand through the memory_recall tool.
+    // pointers() is kept OUT of `raw` so the leak post-filter never touches it;
+    // it is injected as its own block below.
+    const pointerContribs = await this.recall.pointers(userText, instanceId);
 
     // 执行时后筛 (req_leak_postfilter_dynamic): re-check against the execution-time
     // signal and decide the FINAL fate of the leakage (strip / ask / keep).
@@ -120,6 +123,20 @@ export class GolemAgent {
             provenance: c.provenance,
           })),
         },
+      });
+    }
+    // Mechanism A pointer block (dual-mechanism-recall.md §3): a clean "memory
+    // index" that is NOT in-character — its job is to tell the model which
+    // memories exist and invite a memory_recall call, not to be woven into
+    // prose. Distinct channel so dsh-seams renders it separately from the leak.
+    if (pointerContribs.length > 0) {
+      const indexList = pointerContribs.map((c) => c.content).join("、");
+      const frame =
+        "（以下是你记忆图中与本次对话相关的索引。可在需要时调用 memory_recall 工具拉取任意一条的完整内容：）";
+      messages.push({
+        role: "user",
+        content: `${frame}\n${indexList}`,
+        meta: { channel: "recall-pointer" },
       });
     }
     return { messages, assess, contributions, postFilter: { action: decision.action, reason: decision.reason, userPrompt: decision.userPrompt } };

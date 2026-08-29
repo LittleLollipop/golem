@@ -44,6 +44,8 @@ import { HttpLlmClient } from "./llm/client.js";
 import type { DshContext, UserMessage } from "./types.js";
 import { GolemRemoteService } from "./golem-remote.js";
 import * as fs from "node:fs";
+import { recallBudget } from "./recall-budget.js";
+import { createMemoryRecallTool } from "./tools/memory-recall.js";
 
 const PRESTEP_LOG = process.env.FAKEREN_PRESTEP_LOG ?? "/tmp/fakeren-prestep.log";
 
@@ -51,6 +53,7 @@ export const name = "golem";
 export const inject = [
   "sessionPersistence",
   "userQuestions",
+  "tools",
 ];
 
 /**
@@ -153,6 +156,20 @@ export function apply(ctx: DshContext, config: GolemConfig = {}): void {
   const drift = new DriftChannel(reader, dsh, registry, ambientSource.getBuffer(), l05, loadLeakConfig(), schedulerLog);
   const recall = new RecallChannel(new GraphRecallSource(reader));
   const situational = new SituationalChannel();
+
+  // ── Mechanism B: model-driven memory pull (dual-mechanism-recall.md §4) ──
+  // Register a dsh tool the model can call to fetch full memory nodes on demand,
+  // so the auto-injected pointer block (Mechanism A) stays tiny while the model
+  // can still reach any memory. Budget-guarded (≤3/turn, reset at pre-step step
+  // 1); the tool calls RecallChannel.fetchNodes and formats the result.
+  try {
+    (ctx as any).tools?.register?.(
+      createMemoryRecallTool({ registry, recall, budget: recallBudget }),
+    );
+    console.log("[golem] registered tool: memory_recall");
+  } catch (err) {
+    console.error("[golem] FAILED to register memory_recall tool:", String(err));
+  }
   const agent = new GolemAgent(classifier, drift, recall, situational, writer, consolidator, bus, dsh, new LeakPostFilter());
 
   // Instance binding immutability is enforced at InstanceRegistry.select()

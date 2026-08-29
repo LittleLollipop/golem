@@ -69,3 +69,53 @@ describe("RecallChannel", () => {
     }
   });
 });
+
+describe("RecallChannel — dual-mechanism (push-hint pointers vs pull fetch)", () => {
+  function nodeWithSummary(id: string, label: string, summary: string): GraphNode {
+    return { ...node(id, label), props: { assistantSummary: summary } };
+  }
+
+  it("pointers() returns ONLY labels (no full summary), channel 'recall-pointer'", async () => {
+    const src = new StubSource([
+      nodeWithSummary("n1", "橘猫豆豆", "它是一只爱睡觉的橘猫"),
+      nodeWithSummary("n2", "旧相机", "佳能胶片机，偶尔卡带"),
+    ]);
+    const ch = new RecallChannel(src);
+    const ptrs = await ch.pointers("讲讲橘猫和相机", "instA", 5);
+    expect(ptrs).toHaveLength(2);
+    for (const p of ptrs) {
+      expect(p.channel).toBe("recall-pointer");
+      expect(p.content).not.toContain("〔"); // no full-summary framing
+      expect(p.content).not.toContain("图检索");
+    }
+    // content is exactly the label — the model reads these as a memory index
+    expect(ptrs.map((p) => p.content)).toEqual(["橘猫豆豆", "旧相机"]);
+  });
+
+  it("fetch() returns full content (label + summary), channel 'recall'", async () => {
+    const src = new StubSource([nodeWithSummary("n1", "橘猫豆豆", "它是一只爱睡觉的橘猫")]);
+    const ch = new RecallChannel(src);
+    const full = await ch.fetch("橘猫", "instA", 5);
+    expect(full).toHaveLength(1);
+    expect(full[0].channel).toBe("recall");
+    expect(full[0].content).toContain("橘猫豆豆");
+    expect(full[0].content).toContain("它是一只爱睡觉的橘猫");
+  });
+
+  it("fetchNodes() returns raw GraphNodes (for the memory_recall tool)", async () => {
+    const src = new StubSource([nodeWithSummary("n1", "橘猫豆豆", "summary-x")]);
+    const ch = new RecallChannel(src);
+    const nodes = await ch.fetchNodes("橘猫", "instA", 5);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].id).toBe("n1");
+    expect(nodes[0].label).toBe("橘猫豆豆");
+  });
+
+  it("gather() is an alias of fetch() (back-compat)", async () => {
+    const src = new StubSource([nodeWithSummary("n1", "橘猫豆豆", "summary-x")]);
+    const ch = new RecallChannel(src);
+    const g = await ch.gather("橘猫", "instA", 2);
+    const f = await ch.fetch("橘猫", "instA", 2);
+    expect(g).toEqual(f);
+  });
+});

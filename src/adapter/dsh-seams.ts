@@ -25,6 +25,7 @@ import type {
   SessionPersistence,
   UserMessage,
 } from "../types.js";
+import { recallBudget } from "../recall-budget.js";
 
 /**
  * Persistent pre-step log. dsh's stdout/stderr lives in a transient background
@@ -86,13 +87,16 @@ function toText(content: unknown): string {
  */
 function fakerenUserMessage(
   text: string,
-  kind: "persona" | "subconscious",
+  kind: "persona" | "subconscious" | "recall-pointer",
 ): ReturnType<typeof createUserMessage> {
   // source.kind !== "user" → dsh renders this as an inline CONTEXT block (in the
   // middle of the conversation) rather than a user bubble. Distinct plugin labels
-  // keep persona vs leakage visually distinguishable. `fakeren` is retained for
-  // loadSessionEvents()'s injected-detection.
-  const plugin = kind === "persona" ? "golem-identity" : "golem-leak";
+  // keep persona vs leakage vs recall-index visually distinguishable. `fakeren`
+  // is retained for loadSessionEvents()'s injected-detection.
+  const plugin =
+    kind === "persona" ? "golem-identity"
+    : kind === "recall-pointer" ? "golem-recall"
+    : "golem-leak";
   return createUserMessage({
     content: [{ type: "text" as const, text }],
     source: { kind: "plugin", plugin, fakeren: { kind } } as any,
@@ -139,6 +143,11 @@ export class DshAdapter {
       // reported 2026-08-29 — one leak was injected per search call).
       const step = typeof ev?.step === "number" ? ev.step : undefined;
       const turn = typeof ev?.turn === "number" ? ev.turn : undefined;
+      // Reset the per-turn recall budget at the turn's step-1 opening so the cap
+      // persists across tool-loop continuations (step >= 2) within the same turn
+      // (dual-mechanism-recall.md §6). Only on an explicit step===1, so older dsh
+      // builds that never send `step` don't clobber the counter every call.
+      if (step === 1) recallBudget.reset(sessionId);
       // dsh message → our domain shape. dsh content is ContentBlock[]; flatten
       // to plain text for the assemble fn (recall/drift/grade all work on text).
       const claimed: UserMessage[] = (ev?.messages ?? []).map((m: any) => ({
@@ -205,7 +214,22 @@ export class DshAdapter {
       } catch (err) {
         pLog(`[golem:pre-step] WARNING: createUserMessage threw: ${String(err)}`);
       }
-      pLog(`[golem:pre-step] exit leaked=${leaked.length}`);
+      // Mechanism A pointer block (dual-mechanism-recall.md §3): a "memory index"
+      // surfaced as its own inline context block (plugin label golem-recall),
+      // distinct from the subconscious leak block.
+      let pointerMsg: unknown[] = [];
+      try {
+        const pointerBlock = augmented.find(
+          (m) => m.meta && (m.meta as any).channel === "recall-pointer",
+        );
+        if (pointerBlock) {
+          pointerMsg.push(fakerenUserMessage(pointerBlock.content, "recall-pointer"));
+          pLog(`[golem:pre-step] recall-pointer injected for session=${sessionId}`);
+        }
+      } catch (err) {
+        pLog(`[golem:pre-step] WARNING: recall-pointer createUserMessage threw: ${String(err)}`);
+      }
+      pLog(`[golem:pre-step] exit leaked=${leaked.length} pointer=${pointerMsg.length}`);
       for (const m of augmented) {
         if (m.meta && (m.meta as any).channel === "assembled") {
           pLog(`[golem:pre-step] LEAK BLOCK >>>\n${m.content}\n<<< LEAK BLOCK`);
@@ -224,7 +248,7 @@ export class DshAdapter {
       }
       return {
         kind: "enter",
-        messages: [...personaMsg, ...(ev?.messages ?? []), ...leaked],
+        messages: [...personaMsg, ...(ev?.messages ?? []), ...leaked, ...pointerMsg],
       };
     });
   }

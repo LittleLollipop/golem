@@ -172,7 +172,7 @@ export interface GraphStats {
 
 // ── Channels (三通道分离, C2) ─────────────────────────────────────────────
 
-export type ChannelName = "drift" | "recall" | "situational";
+export type ChannelName = "drift" | "recall" | "situational" | "recall-pointer";
 
 /**
  * Seed provenance (req_seed_provenance): every injected seed must record

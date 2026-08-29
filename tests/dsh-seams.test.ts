@@ -126,3 +126,55 @@ describe("DshAdapter.onPreStep — tool-loop leak suppression (2026-08-29)", () 
     expect(leaked.length).toBe(1);
   });
 });
+
+describe("DshAdapter.onPreStep — recall-pointer injection (dual-mechanism §3)", () => {
+  async function runPreStep(ev: any) {
+    const { ctx, getPreStep } = makeMockCtx();
+    const adapter = new DshAdapter(ctx);
+    adapter.onPreStep(async () => [
+      {
+        role: "user" as const,
+        content: "（你心里很清楚：）\nleak fragment",
+        meta: { channel: "assembled" },
+      },
+      {
+        role: "user" as const,
+        content: "（记忆索引）\n橘猫豆豆、旧相机故障",
+        meta: { channel: "recall-pointer" },
+      },
+    ]);
+    return await getPreStep()!(ev, () => {});
+  }
+
+  it("injects the recall-pointer block as a distinct golem-recall context block", async () => {
+    const decision = await runPreStep({
+      agent: { session: "s-ptr-1" },
+      messages: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+      turn: 1,
+      step: 1,
+    });
+    const ptr = (decision.messages as any[]).filter(
+      (m) => m.source?.fakeren?.kind === "recall-pointer",
+    );
+    expect(ptr.length).toBe(1);
+    expect(ptr[0].source.plugin).toBe("golem-recall");
+    expect(ptr[0].content[0].text).toContain("橘猫豆豆");
+  });
+
+  it("resets the per-turn recall budget at step 1 (cap survives tool loops)", async () => {
+    const { recallBudget } = await import("../src/recall-budget.js");
+    const key = "s-ptr-budget";
+    recallBudget.reset(key);
+    recallBudget.tryConsume(key);
+    recallBudget.tryConsume(key);
+    recallBudget.tryConsume(key);
+    expect(recallBudget.tryConsume(key)).toBe(-1); // exhausted before step-1 pre-step
+    await runPreStep({
+      agent: { session: key },
+      messages: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+      turn: 2,
+      step: 1,
+    });
+    expect(recallBudget.tryConsume(key)).toBe(2); // reset by the step-1 pre-step
+  });
+});

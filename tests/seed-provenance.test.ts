@@ -60,6 +60,8 @@ const recallStub = {
       provenance: { source: "node:n1", selectionPath: "recall keyword match rank 1" },
     },
   ],
+  // dual-mechanism §3: pointers() feeds the separate memory-index block
+  pointers: async () => [],
 };
 const situationalStub = { gather: async () => [], perceive: async () => {} };
 const writerStub = { writeTurn: async () => {} };
