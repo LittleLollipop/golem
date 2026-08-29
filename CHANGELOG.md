@@ -1,0 +1,61 @@
+# Changelog
+
+本项目所有重要变更均记录于此文件。
+
+格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
+版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
+
+## [0.3.0] - 2026-08-29
+
+假人 dsh 插件：自记忆（axolotl 图后端）驱动的潜意识渗漏（L0/L0.5/L1）。本版聚焦**记忆召回质量**与**跨重启持久化**。
+
+### Added
+- **双机制记忆检索**（`feat(memory)`）：召回分两层 —— A. 每回合自动注入的「指针(push-hint)」只提示相关记忆的标签，不刷全文；B. 模型主动调用 `memory_recall` 工具拉取完整节点。两条路都走真实 axolotl 图后端。
+- **召回相关性排序**（`fix(recall)`）：`rankNodes()` 按「标签命中数×10 + 特异度×1.5 + 覆盖×1」排序（再 weight→timestamp 兜底），点名记忆不再被 `slice` 切掉。
+- **二跳扩展**（`fix(recall)`）：取 top-3 锚点的 1-hop 邻居插入锚点之后（集群聚合顶部），让相关上下文优先露出，2-hop 项标注 provenance；新增 `neighbors` 接口贯通（sidecar `POST /{inst}/neighbors` + `GraphStore`/`axolotl-client`/`reader` 各层）。
+- **记忆-first 默认行为**（`fix(recall)`）：每回合 step-1 注入 `MEMORY_FIRST_DIRECTIVE` 操作指令 —— 「先调 `memory_recall` 再查外部（文件系统/Grep 等）」，从根上纠正模型直接 grep 文件的偏离；`memory-recall.ts` 描述同步强化护栏。
+
+### Changed
+- **L0.5 知识泄漏**（`fix(leak)`）：由「抖全文」改为关键词指针式泄漏，并新增同会话去重（不重复漏同一条），加新鲜度闸门（默认 1 天，超龄退出自动漏），不再每轮刷屏式复读。
+- **潜意识渗漏注入时机**（`fix(seams)`）：工具循环轮（step≥2）不再注入渗漏，也不再调用 `assemble`，降低干扰。
+
+### Fixed
+- **记忆持久化 bug（隐藏根因）**（`fix(recall)` + `sidecar/server.py`）：`add_node`/`add_edge` 写完未 `save()`，sidecar 重启会丢失最近写入节点（含部分记忆）。现已每次写入即落盘，数据跨重启不丢。
+- **`memory_recall` schema**（`fix(memory_recall)`）：`parameters` 改为 object-rooted JSON Schema，避免 dsh 校验拒绝注册。
+- **dev-up 跨平台后台脱离**（`fix(dev-up)`）：macOS 无 `setsid` 时退回 `nohup+disown`。
+
+### 验证
+- `npm run build` 零错；`vitest` 179 全绿（含新增 golem-agent / recall-channel 二跳与排序用例）。
+- 模拟 `pointers("卷一·不嫁 写大纲")` → 该节点排 #1，二跳拉出钟无艳/梗概/节拍并聚合顶部。
+- 持久化 kill 测试：写入后杀 sidecar 重启，节点仍在（修复前必丢）。
+
+## [0.2.0] - 2026-08-29
+
+首个打 tag 的发布（commit `2f3ee71`）。覆盖自初始架构提交 `1c9e2fa`（2026-08-24）起的 39 个 commit，建立假人完整的潜意识渗漏 + 自记忆 + 知识学习骨架，并完成 dsh 真集成、设置面板与开源准备。
+
+### Added
+- **多假人隔离语义记忆架构**（初始提交 `1c9e2fa`，"fakeren v0.1"）：per-instance 独立记忆图，自记忆基石。
+- **dsh 真集成接缝**：事件式接入（`678a83e` fix P0/#18）、`pre-step` 钩子接入实例元数据并下沉 axolotl 基板（`23971a4`）、运行时不再加载 live session（`f970480`）、observability 日志落盘（`acb571d`）。
+- **Recall 图检索通道**（`186bbca` feat P0）：接通 axolotl 图检索；recall 通道 surface 助手回复摘要（`6bb647a`），drift「往昔」surface 历史助手回复并剥离模型思考（`f881452`）；注入消息加 UI 标记（`999d220`）。
+- **渗漏框架 L0/L0.5/L1**：结构注入标记 + LLM 抽取/valence/评分 seams + per-instance persona + CLI（`db16e27` P1-P5），并据设计对齐（`deedb77`）；ambient 运行时开关（`a929723` #47）、流滚动衰减（`c3f6c03` #46）、采集白名单 + 摄像头/麦克风独立开关（`8690fd0` #48）、摄像头/麦克风真实感官接入（`f89ea23` #45）、ambient 异步预算（`baaa859` #49）、后台 daemon 资源占用可控（`89fb48b` #50）。
+- **L0.5 每日知识轨迹**（`844af62` #51）+ 执行时后筛双候选（`19a76ee` #52）+ leak 参数外置可调（`a1b2432` #53）+ 输出级污染归因（`0e79514` #54）+ 种子溯源（`7096d8a` #55）+ 检视 CLI（`58c44c3` #56）+ 悬置需求备案（`68203d9` #57）+ 后台调度运行日志（`6db0533` #58）。
+- **双轨知识学习**（`f94c20c` l05）：随机机械轨 + 模型驱动目的轨（抽象状态、不兜底）；知识源实时拉取 Wikipedia（`00fb0fb`）、新增 News(RSS) 与 Social(HN 热榜)（`6cbecb2`），并按源切换模式策略（`69ffaf7`）。
+- **配置页迁移进 dsh 设置面板**（`92fa3d7` D1b+D2a），并闭环 + 开源准备 / 框架论述 / README，命名弃用 Fake Human（`c4f386b`）。
+- **项目重命名** `fakeren → golem`（`dc7406f`），含客户端包双-half 结构修复（`8fcc0a8`/`8b5a3d2`）。
+- **dev-up 常驻**：dsh web 常驻 + 首个假人「小静」(遗思静) 撰写/润色的 README 与演示素材（`c5f46b0`）。
+
+### Changed
+- 潜意识渗漏注入策略迭代：`setDefaultInstance` 返回 `null` 替代 `undefined` 消除 RemoteResult 边界校验失败（`7b165a6`），并补类型签名对齐（`d22d04a`）。
+- 工具循环轮（step≥2）不再注入渗漏、不再调用 `assemble`（`1230ffe` fix seams）。
+
+### Fixed
+- `session event 'user/message'` 携带非 JSON 可序列化数据（`bf57bfa`）。
+- recall/grader/sync 中文 grader 正则、always-on recall、注入消息不进记忆图（`13511f6`）。
+- dev-up 跨平台后台脱离，macOS 无 `setsid` 时退回 `nohup+disown`（`b92192e`）。
+
+## [0.1.0] - 2026-08-24
+
+- 初始提交（`1c9e2fa`）：假人多假人隔离语义记忆架构实现。作为本项目的基石，后续 v0.2.0 的全部功能均在此基础上构建。
+
+[0.3.0]: https://github.com/LittleLollipop/golem/releases/tag/v0.3.0
+[0.2.0]: https://github.com/LittleLollipop/golem/releases/tag/v0.2.0
