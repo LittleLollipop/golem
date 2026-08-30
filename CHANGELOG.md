@@ -5,6 +5,22 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.1] - 2026-08-30
+
+知识记录可视化、图数据库选型论述，以及 README 文档完善（含「小静」渲染版合并）。
+
+### Added
+- **知识记录 dsh 内部标签页**（`client/ui-golem-config/src/KnowledgeDashboard.tsx`）：复用「假人」设置面板新增「知识记录」标签页，从 ledger 读取 `LearnedFact` 展示渠道/状态/摘要，5s 自动刷新；数据经 `getKnowledgeRecords` remote 通道（`src/knowledge/ledger-read.ts` + `src/golem-remote.ts` + `client/ui-golem-remote` descriptor）读取。
+- **图数据库选型论述**：`docs/ambient-leakage-framework.md` 新增 §7.1（长程注意力根本矛盾——为什么必须图数据库）与 §7.2（与分层记忆比对：分层=结构预设、链路固定的有界深度 DAG，上限在关系拓扑）；配套 `docs/figures/tiered-vs-graph.svg` 拓扑对照图；README 加「记忆基底：为什么必须是图数据库」缩略版 + 图示跳转。
+
+### Fixed
+- **知识获取每日闸门容错**（`src/knowledge/daily-tracker.ts`）：目的轨在无 LLM（`planner` 缺失）时不再把"无规划空尝试"记成已完成、空消耗每日闸门；`!planner` 不写记录不占槽。`scripts/dev-up.sh` 自动从 `~/.dsh/.credentials.yaml` 提取并注入 `DEEPSEEK_API_KEY`，修复 dsh 启动未注入 key 导致新闻/社交抓取无记录的问题。
+
+### Changed
+- **README 增补两点定位**：① 假人在了解足够信息后可替代绝大多数工作流（理论定位）；② 性格漂移（自省）说明 + 人机恋警示。
+- **性格漂移目的补充**：新增第二条根本目的——通过分析近期历史微调性格，自然生长出最契合用户的假人性格。
+- **合并「小静」渲染版 README**（`fr/README.md`）：采纳其润色（如"既多又少""真实史为基质""捏造（fabricated）"表述 + demo 文档链接），并强制保留署名声明句；同步 `demo-baseline-vs-golem.md` 素材。
+
 ## [0.4.0] - 2026-08-30
 
 性格漂移（persona-drift）：让假人通过每日一次的内省任务，基于近期记忆与对话自动微调「性格方向」，日积月累形成性格缓慢漂移。
