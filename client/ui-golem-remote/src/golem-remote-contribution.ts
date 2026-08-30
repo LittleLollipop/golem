@@ -28,6 +28,9 @@ const instanceMetaSchema = z.object({
   id: z.string(),
   name: z.string(),
   persona: z.string().optional(),
+  // 与 golem 服务端 `src/types.ts` 的 `InstanceMeta.personaCore/personaExt` 对齐。
+  personaCore: z.string().optional(),
+  personaExt: z.string().optional(),
   createdAt: z.number(),
   turns: z.number(),
 })
@@ -37,6 +40,9 @@ const instanceMetaPatchSchema = z.object({
   id: z.string().optional(),
   name: z.string().optional(),
   persona: z.string().optional(),
+  // 与 golem 服务端 `src/types.ts` 的 `InstanceMeta.personaCore/personaExt` 对齐。
+  personaCore: z.string().optional(),
+  personaExt: z.string().optional(),
   createdAt: z.number().optional(),
   turns: z.number().optional(),
 })

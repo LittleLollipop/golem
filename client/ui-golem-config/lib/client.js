@@ -884,7 +884,10 @@ window.__ModuleLoader__.load({
 					const [list, def] = await Promise.all([api.listInstances(), api.getDefaultInstance()]);
 					setMetas(list);
 					setDefaultId(def);
-					setDrafts(Object.fromEntries(list.map((m) => [m.id, m.persona ?? ""])));
+					setDrafts(Object.fromEntries(list.map((m) => [m.id, {
+						core: m.personaCore ?? m.persona ?? "",
+						ext: m.personaExt ?? ""
+					}])));
 				} catch (e) {
 					console.error("[GolemSettings] refresh failed:", e);
 					setCreateHint("加载失败: " + String(e));
@@ -911,12 +914,18 @@ window.__ModuleLoader__.load({
 					setCreateHint("失败: " + String(e));
 				}
 			};
-			const onSave = async (id, persona) => {
+			const onSave = async (id, core, ext) => {
 				try {
-					const echoed = (await api.setInstanceMeta(id, { persona })).persona ?? "";
+					const updated = await api.setInstanceMeta(id, {
+						personaCore: core,
+						personaExt: ext
+					});
+					const echoedCore = updated.personaCore ?? "";
+					const echoedExt = updated.personaExt ?? "";
+					const ok = echoedCore === core && echoedExt === ext;
 					setHints((h) => ({
 						...h,
-						[id]: echoed === persona ? persona.trim() ? "已保存（" + persona.length + " 字）" : "已保存（已清空人格）" : "⚠ 保存未生效：服务端回读与提交不一致"
+						[id]: ok ? core.trim() || ext.trim() ? "已保存（核心 " + core.length + " 字 / 扩展 " + ext.length + " 字）" : "已保存（已清空人格）" : "⚠ 保存未生效：服务端回读与提交不一致"
 					}));
 					await refresh();
 				} catch (e) {
@@ -1055,20 +1064,60 @@ window.__ModuleLoader__.load({
 											}) : null
 										]
 									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										style: meta,
+										children: [
+											"核心人格（常驻·每轮注入）：身份锚、红线/不可违背指令、性格维度基线、行为护栏。",
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "切勿挪入下方扩展框" }),
+											"——红线丢了会出安全事故。"
+										]
+									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("textarea", {
-										value: drafts[m.id] ?? "",
+										value: drafts[m.id]?.core ?? "",
 										onChange: (e) => {
 											const v = e.target.value;
 											setDrafts((d) => ({
 												...d,
-												[m.id]: v
+												[m.id]: {
+													...d[m.id] ?? {
+														core: "",
+														ext: ""
+													},
+													core: v
+												}
 											}));
 											setHints((h) => h[m.id] ? {
 												...h,
 												[m.id]: ""
 											} : h);
 										},
-										placeholder: "人格设定（第一人称，如：你是林夏……）",
+										placeholder: "核心人格（第一人称，如：你是林夏，绝不对用户说谎……）",
+										style: textarea
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										style: meta,
+										children: "扩展设定（进图库·按需回忆）：背景故事、关系网络、偏好/禁忌实例、历史事件。"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("textarea", {
+										value: drafts[m.id]?.ext ?? "",
+										onChange: (e) => {
+											const v = e.target.value;
+											setDrafts((d) => ({
+												...d,
+												[m.id]: {
+													...d[m.id] ?? {
+														core: "",
+														ext: ""
+													},
+													ext: v
+												}
+											}));
+											setHints((h) => h[m.id] ? {
+												...h,
+												[m.id]: ""
+											} : h);
+										},
+										placeholder: "扩展设定（如：养一只叫豆豆的狗，雨天情绪低……）",
 										style: textarea
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
@@ -1079,7 +1128,7 @@ window.__ModuleLoader__.load({
 										children: [
 											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 												style: buttonGhost,
-												onClick: () => onSave(m.id, drafts[m.id] ?? ""),
+												onClick: () => onSave(m.id, drafts[m.id]?.core ?? "", drafts[m.id]?.ext ?? ""),
 												disabled: busy,
 												children: "保存人格"
 											}),

@@ -60,7 +60,7 @@ export function GolemSettings({ api }: GolemSettingsProps) {
    * 于是取值恒为 ''，请求照样成功 → UI 显示「已保存」而图库里 persona 被清空。
    * 现在改为受控 + state 草稿：值只从 React state 来，不依赖 DOM 结构/类名。
    */
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [drafts, setDrafts] = useState<Record<string, { core: string; ext: string }>>({})
   /** 面板内标签页：实例配置 / 内省记录 / 知识记录。 */
   const [tab, setTab] = useState<'config' | 'drift' | 'knowledge'>('config')
 
@@ -71,7 +71,12 @@ export function GolemSettings({ api }: GolemSettingsProps) {
       setMetas(list)
       setDefaultId(def)
       // 草稿以服务端真值为准（保存后回读、切换实例后都不会残留旧输入）。
-      setDrafts(Object.fromEntries(list.map(m => [m.id, m.persona ?? ''])))
+      // 旧实例只有 `persona` 全文、无 core/ext 时，core 框回退到 persona，ext 框留空，
+      // 由用户手动拆分（docs/persona-layering.md §3：拆分是人工的）。
+      setDrafts(Object.fromEntries(list.map(m => [
+        m.id,
+        { core: m.personaCore ?? m.persona ?? '', ext: m.personaExt ?? '' },
+      ])))
     } catch (e) {
       console.error('[GolemSettings] refresh failed:', e)
       setCreateHint('加载失败: ' + String(e))
@@ -92,17 +97,21 @@ export function GolemSettings({ api }: GolemSettingsProps) {
     } catch (e) { setCreateHint('失败: ' + String(e)) }
   }
 
-  const onSave = async (id: string, persona: string) => {
+  const onSave = async (id: string, core: string, ext: string) => {
     try {
-      const updated = await api.setInstanceMeta(id, { persona })
-      // 写后回读校验：服务端返回的 persona 必须与提交值一致。
+      const updated = await api.setInstanceMeta(id, { personaCore: core, personaExt: ext })
+      // 写后回读校验：服务端返回的 personaCore/personaExt 必须分别与提交值一致。
       // 上一版 bug 正是「请求成功但内容为空」——只看 resolve 会误报成功，
       // 所以这里比对内容，不一致就明确报出来而不是显示「已保存」。
-      const echoed = updated.persona ?? ''
+      const echoedCore = updated.personaCore ?? ''
+      const echoedExt = updated.personaExt ?? ''
+      const ok = echoedCore === core && echoedExt === ext
       setHints(h => ({
         ...h,
-        [id]: echoed === persona
-          ? (persona.trim() ? '已保存（' + persona.length + ' 字）' : '已保存（已清空人格）')
+        [id]: ok
+          ? (core.trim() || ext.trim()
+              ? '已保存（核心 ' + core.length + ' 字 / 扩展 ' + ext.length + ' 字）'
+              : '已保存（已清空人格）')
           : '⚠ 保存未生效：服务端回读与提交不一致',
       }))
       await refresh()
@@ -177,21 +186,38 @@ export function GolemSettings({ api }: GolemSettingsProps) {
                   <span style={meta}>id: {m.id} · turns: {m.turns ?? 0}</span>
                   {isDef ? <span style={tag}>默认</span> : null}
                 </div>
+                <div style={meta}>
+                  核心人格（常驻·每轮注入）：身份锚、红线/不可违背指令、性格维度基线、行为护栏。
+                  <strong>切勿挪入下方扩展框</strong>——红线丢了会出安全事故。
+                </div>
                 <textarea
-                  value={drafts[m.id] ?? ''}
+                  value={drafts[m.id]?.core ?? ''}
                   onChange={e => {
                     const v = e.target.value
-                    setDrafts(d => ({ ...d, [m.id]: v }))
+                    setDrafts(d => ({ ...d, [m.id]: { ...(d[m.id] ?? { core: '', ext: '' }), core: v } }))
                     // 输入即清掉上一次的「已保存/失败」提示，避免误读为当前状态。
                     setHints(h => (h[m.id] ? { ...h, [m.id]: '' } : h))
                   }}
-                  placeholder="人格设定（第一人称，如：你是林夏……）"
+                  placeholder="核心人格（第一人称，如：你是林夏，绝不对用户说谎……）"
+                  style={textarea}
+                />
+                <div style={meta}>
+                  扩展设定（进图库·按需回忆）：背景故事、关系网络、偏好/禁忌实例、历史事件。
+                </div>
+                <textarea
+                  value={drafts[m.id]?.ext ?? ''}
+                  onChange={e => {
+                    const v = e.target.value
+                    setDrafts(d => ({ ...d, [m.id]: { ...(d[m.id] ?? { core: '', ext: '' }), ext: v } }))
+                    setHints(h => (h[m.id] ? { ...h, [m.id]: '' } : h))
+                  }}
+                  placeholder="扩展设定（如：养一只叫豆豆的狗，雨天情绪低……）"
                   style={textarea}
                 />
                 <div style={{ ...row, marginTop: 8 }}>
                   <button
                     style={buttonGhost}
-                    onClick={() => onSave(m.id, drafts[m.id] ?? '')}
+                    onClick={() => onSave(m.id, drafts[m.id]?.core ?? '', drafts[m.id]?.ext ?? '')}
                     disabled={busy}
                   >保存人格</button>
                   <button style={buttonGhost} onClick={() => onDefault(m.id)}>设为默认</button>

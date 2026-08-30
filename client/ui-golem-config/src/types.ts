@@ -8,6 +8,16 @@ export interface InstanceMeta {
   id: string
   name: string
   persona?: string
+  /**
+   * 常驻核心人格：身份锚 + 红线/不可违背指令 + 性格维度基线 + 行为护栏。
+   * 每 session 注入，从不写入图库（docs/persona-layering.md）。
+   */
+  personaCore?: string
+  /**
+   * 进图库扩展设定：背景故事 / 关系网络 / 偏好禁忌实例 / 历史事件。
+   * 按需经 recall 拉取，seed 进 axolotl 图（docs/persona-layering.md）。
+   */
+  personaExt?: string
   createdAt: number
   turns: number
 }

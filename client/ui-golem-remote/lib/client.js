@@ -4265,6 +4265,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			id: string(),
 			name: string(),
 			persona: string().optional(),
+			personaCore: string().optional(),
+			personaExt: string().optional(),
 			createdAt: number(),
 			turns: number()
 		});
@@ -4272,6 +4274,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			id: string().optional(),
 			name: string().optional(),
 			persona: string().optional(),
+			personaCore: string().optional(),
+			personaExt: string().optional(),
 			createdAt: number().optional(),
 			turns: number().optional()
 		});
