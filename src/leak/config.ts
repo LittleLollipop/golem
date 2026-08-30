@@ -1,3 +1,6 @@
+import * as os from "os";
+import * as path from "path";
+
 /**
  * Leak rate config — externalized, tunable leak knobs (req_leak_rate_tunable).
  *
@@ -75,6 +78,10 @@ export interface PersonaDriftConfig {
   historyDays: number;
   /** the personality dimensions the introspection may move. */
   dims: string[];
+  /** where introspection execution reports are written (one .drift-log.md per
+   *  instance + a machine-readable .last.json). Makes the otherwise-black-box
+   *  idle introspection observable (user 2026-08-30). */
+  reportDir: string;
 }
 
 function boolEnv(env: string | undefined, fallback: boolean): boolean {
@@ -94,5 +101,8 @@ export function loadPersonaDriftConfig(): PersonaDriftConfig {
     recentDays: num(process.env.FAKEREN_DRIFT_RECENT_DAYS, 7),
     historyDays: num(process.env.FAKEREN_DRIFT_HISTORY_DAYS, 14),
     dims,
+    reportDir:
+      process.env.FAKEREN_DRIFT_REPORT_DIR ??
+      path.join(os.homedir(), ".fakeren", "drift-reports"),
   };
 }

@@ -21,7 +21,9 @@ import { TypertRemoteService, Remote, type RemoteResult } from "@deepseek-ai/dsh
 import { GolemInstanceApi } from "./golem-instance-api.js";
 import { AxolotlClient } from "./memory/axolotl-client.js";
 import { InstanceRegistry } from "./registry/instance-registry.js";
+import { readDriftRecords } from "./agent/persona-drift.js";
 import type { InstanceId, InstanceMeta } from "./types.js";
+import type { DriftExecutionResult } from "./agent/persona-drift.js";
 
 declare module "@deepseek-ai/cordis" {
   interface Context {
@@ -102,6 +104,18 @@ export class GolemRemoteService extends TypertRemoteService {
       () => ok(null),
       (error) =>
         fail("instance-delete-failed", error instanceof Error ? error.message : String(error)),
+    );
+  }
+
+  /**
+   * 读取某实例的全部内省执行记录（时间序列，按文件内顺序）。
+   * 文件不存在（尚未跑过内省）返回空数组而非报错。数据来自
+   * FileDriftReporter 追加的 `<reportDir>/<inst>.drift-records.jsonl`。
+   */
+  @Remote("getDriftRecords")
+  getDriftRecords(instanceId: InstanceId): Promise<RemoteResult<DriftExecutionResult[]>> {
+    return readDriftRecords(instanceId).then(ok, (error) =>
+      fail("drift-read-failed", error instanceof Error ? error.message : String(error)),
     );
   }
 }

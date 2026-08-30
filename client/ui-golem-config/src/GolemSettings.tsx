@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react'
 import type { InstanceMeta } from './types.ts'
 import type { GolemApi } from './golem-api.ts'
+import { DriftDashboard } from './DriftDashboard.tsx'
 
 /**
  * dsh 设置面板里的「假人」section 内容。
@@ -59,6 +60,8 @@ export function GolemSettings({ api }: GolemSettingsProps) {
    * 现在改为受控 + state 草稿：值只从 React state 来，不依赖 DOM 结构/类名。
    */
   const [drafts, setDrafts] = useState<Record<string, string>>({})
+  /** 面板内标签页：实例配置 / 内省记录。 */
+  const [tab, setTab] = useState<'config' | 'drift'>('config')
 
   const refresh = useCallback(async () => {
     setBusy(true)
@@ -124,7 +127,21 @@ export function GolemSettings({ api }: GolemSettingsProps) {
 
   return (
     <div style={{ padding: 4 }}>
-      <div style={card}>
+      <div style={{ ...row, marginBottom: 14 }}>
+        <button
+          style={tab === 'config' ? button : buttonGhost}
+          onClick={() => setTab('config')}
+        >实例配置</button>
+        <button
+          style={tab === 'drift' ? button : buttonGhost}
+          onClick={() => setTab('drift')}
+        >内省记录</button>
+      </div>
+
+      {tab === 'drift' ? (
+        <DriftDashboard api={api} instances={metas} />
+      ) : (
+    <div style={card}>
         <div style={row}>
           <input
             style={{ ...input, flex: 1, minWidth: 160 }}
@@ -141,7 +158,6 @@ export function GolemSettings({ api }: GolemSettingsProps) {
           <button style={button} onClick={onCreate} disabled={busy}>新建假人</button>
         </div>
         <div style={hint}>{createHint}</div>
-      </div>
 
       {metas.length === 0
         ? <div style={meta}>暂无实例，先在上方新建。</div>
@@ -181,5 +197,7 @@ export function GolemSettings({ api }: GolemSettingsProps) {
             )
           })}
     </div>
+    )}
+  </div>
   )
 }

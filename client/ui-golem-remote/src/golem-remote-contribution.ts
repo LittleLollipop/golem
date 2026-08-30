@@ -41,6 +41,42 @@ const instanceMetaPatchSchema = z.object({
   turns: z.number().optional(),
 })
 
+// ── 内省记录（DriftExecutionResult）schema ──────────────────────────────────
+// 与 golem 服务端 `src/agent/persona-drift.ts` 的 DriftExecutionResult 保持一致。
+const driftInputSchema = z.object({
+  dialogTurns: z.number(),
+  recentDays: z.number(),
+  memoryTopics: z.number(),
+  historyDrifts: z.number(),
+})
+const driftParsedSchema = z.object({
+  dims: z.record(z.string(), z.number()),
+  cumulative: z.record(z.string(), z.number()),
+  mood: z.string().optional(),
+  leaning: z.string().optional(),
+  preoccupation: z.string().optional(),
+  rationale: z.string().optional(),
+  evidence: z.array(z.string()),
+})
+const driftWrittenSchema = z.object({
+  nodeId: z.string(),
+  causalEdges: z.number(),
+  evidenceEdges: z.number(),
+})
+const driftRecordSchema = z.object({
+  instanceId: z.string(),
+  date: z.string(),
+  triggeredAt: z.string(),
+  triggered: z.boolean(),
+  skipReason: z.enum(["already-done", "no-dialogue", "no-llm", "model-empty"]).optional(),
+  existingNodeId: z.string().optional(),
+  input: driftInputSchema.optional(),
+  llmRaw: z.string().optional(),
+  error: z.enum(["llm-error", "bad-json"]).optional(),
+  parsed: driftParsedSchema.optional(),
+  written: driftWrittenSchema.optional(),
+})
+
 /**
  * 构造一个 strict codec。`schema` 必须为 zod v4（带 `_zod` 标记），客户端
  * 在解析结果/参数时会调用 `schema.parse(value)`。
@@ -146,6 +182,17 @@ const descriptors: readonly InvocationDescriptor[] = [
       { name: 'id', wire: 'id', source: 'json', codec: strict('golem/types#InstanceId', z.string()) },
     ],
     result: strict('golem/types#null', remoteResult(z.null())),
+  },
+  {
+    id: 'golem#golem/getDriftRecords',
+    service: 'golem',
+    namespace: 'golem',
+    method: 'getDriftRecords',
+    invocation: { kind: 'direct' },
+    parameters: [
+      { name: 'instanceId', wire: 'instanceId', source: 'json', codec: strict('golem/types#InstanceId', z.string()) },
+    ],
+    result: strict('golem/types#DriftRecord[]', remoteResult(z.array(driftRecordSchema))),
   },
 ]
 

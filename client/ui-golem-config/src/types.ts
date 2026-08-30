@@ -13,6 +13,43 @@ export interface InstanceMeta {
 }
 
 /**
+ * 内省执行记录（一次 idle 内省运行的完整轨迹）。
+ * 与 golem 服务端 `src/agent/persona-drift.ts` 的 DriftExecutionResult 保持一致；
+ * 客户端不引入服务端包，此类型须随服务端同步变更。
+ */
+export interface DriftExecutionResult {
+  instanceId: string
+  /** 日历日（ymd）。 */
+  date: string
+  /** 运行开始的 ISO 时间戳。 */
+  triggeredAt: string
+  /** 是否真正调用了 LLM（vs 短路/跳过）。 */
+  triggered: boolean
+  /** 未产出 drift 节点的原因。 */
+  skipReason?: 'already-done' | 'no-dialogue' | 'no-llm' | 'model-empty'
+  /** 已存在同日 drift 的节点 id（already-done）。 */
+  existingNodeId?: string
+  /** 调用模型前读取的内容统计。 */
+  input?: { dialogTurns: number; recentDays: number; memoryTopics: number; historyDrifts: number }
+  /** LLM 原始输出（调试用）。 */
+  llmRaw?: string
+  /** 模型/解析失败。 */
+  error?: 'llm-error' | 'bad-json'
+  /** 解析校验后的结果（已写节点时存在）。 */
+  parsed?: {
+    dims: Record<string, number>
+    cumulative: Record<string, number>
+    mood?: string
+    leaning?: string
+    preoccupation?: string
+    rationale?: string
+    evidence: string[]
+  }
+  /** 落盘位置。 */
+  written?: { nodeId: string; causalEdges: number; evidenceEdges: number }
+}
+
+/**
  * `ctx.remote.golem` 的 typed 面（经 `@deepseek-ai/dsh-typert-protocol` 的
  * `TypertRemoteNamespaceMap` 合并声明）。每个方法返回 `RemoteResult<T>`：
  * `{ ok: true, value }` 或 `{ ok: false, error }`。
@@ -25,4 +62,5 @@ export interface GolemRemoteApi {
   getDefaultInstance(): Promise<RemoteResult<string | null>>
   setDefaultInstance(id: string): Promise<RemoteResult<null>>
   deleteInstance(id: string): Promise<RemoteResult<null>>
+  getDriftRecords(instanceId: string): Promise<RemoteResult<DriftExecutionResult[]>>
 }

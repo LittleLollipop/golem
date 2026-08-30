@@ -17,11 +17,13 @@
  * which catches it so other maintenance still runs.
  */
 
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import type { GraphStore } from "../memory/graph-store.js";
 import type { LlmClient } from "../llm/client.js";
 import { stripFence } from "../llm/client.js";
 import type { InstanceId, GraphNode, GraphEdge } from "../types.js";
-import type { PersonaDriftConfig } from "../leak/config.js";
+import { loadPersonaDriftConfig, type PersonaDriftConfig } from "../leak/config.js";
 
 /**
  * Human-readable per-dimension leanings, used to render the effective persona
@@ -54,6 +56,48 @@ export interface DriftRecord {
   evidence: string[];
 }
 
+/**
+ * Structured, machine+human readable record of ONE introspection run. Emitted
+ * to a DriftReporter after EVERY run (success / skip / failure) so the
+ * otherwise-black-box idle introspection becomes observable (user 2026-08-30).
+ */
+export interface DriftExecutionResult {
+  instanceId: string;
+  /** calendar day this run targets (ymd). */
+  date: string;
+  /** ISO timestamp the run started. */
+  triggeredAt: string;
+  /** true once we actually called the LLM (vs short-circuited / skipped). */
+  triggered: boolean;
+  /** why the run did NOT produce a drift node. */
+  skipReason?: "already-done" | "no-dialogue" | "no-llm" | "model-empty";
+  /** node id of the already-existing same-day drift (already-done). */
+  existingNodeId?: string;
+  /** what the run read before calling the model. */
+  input?: { dialogTurns: number; recentDays: number; memoryTopics: number; historyDrifts: number };
+  /** raw LLM response (for debugging model drift / prompt issues). */
+  llmRaw?: string;
+  /** model/parse failure. */
+  error?: "llm-error" | "bad-json";
+  /** parsed + validated outcome (present when a node was actually written). */
+  parsed?: {
+    dims: Record<string, number>;
+    cumulative: Record<string, number>;
+    mood?: string;
+    leaning?: string;
+    preoccupation?: string;
+    rationale?: string;
+    evidence: string[];
+  };
+  /** where the result was persisted. */
+  written?: { nodeId: string; causalEdges: number; evidenceEdges: number };
+}
+
+/** Sink for introspection execution results (file log, stdout, …). */
+export interface DriftReporter {
+  report(instanceId: string, result: DriftExecutionResult): void;
+}
+
 function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -80,6 +124,7 @@ export class PersonaDriftService {
     private readonly store: GraphStore,
     private readonly llm: LlmClient | undefined,
     private readonly cfg: PersonaDriftConfig,
+    private readonly reporter?: DriftReporter,
   ) {}
 
   // ── read side ────────────────────────────────────────────────────────────
@@ -166,14 +211,34 @@ export class PersonaDriftService {
    */
   async introspect(instanceId: InstanceId, now: Date = new Date()): Promise<DriftRecord | null> {
     const today = ymd(now);
+    const triggeredAt = now.toISOString();
+    const result: DriftExecutionResult = { instanceId, date: today, triggered: false, triggeredAt };
+
     const chain = await this.loadDriftChain(instanceId);
-    if (chain.some((c) => c.rec.date === today)) return null; // 今日已内省
+    const existing = chain.find((c) => c.rec.date === today);
+    if (existing) {
+      result.skipReason = "already-done";
+      result.existingNodeId = existing.id;
+      this.reporter?.report(instanceId, result);
+      return null;
+    }
 
     const cutoff = now.getTime() - this.cfg.recentDays * DAY_MS;
     const dialogue = await this.recentDialogue(instanceId, cutoff);
-    if (dialogue.length === 0) return null; // Q3: 无对话 → 跳过（链断档）
-
     const memoryTopics = await this.recentMemoryTopics(instanceId);
+    result.input = {
+      dialogTurns: dialogue.length,
+      recentDays: this.cfg.recentDays,
+      memoryTopics: memoryTopics.length,
+      historyDrifts: chain.length,
+    };
+
+    if (dialogue.length === 0) {
+      result.skipReason = "no-dialogue";
+      this.reporter?.report(instanceId, result);
+      return null; // Q3: 无对话 → 跳过（链断档）
+    }
+
     const prev = chain.length > 0 ? chain[chain.length - 1].rec.cumulative : emptyDims(this.cfg.dims);
     let base = "";
     try {
@@ -182,11 +247,27 @@ export class PersonaDriftService {
       /* ignore — base anchor optional for the prompt */
     }
 
-    const record = this.llm
-      ? await this.callModel({ today, base, dialogue, memoryTopics, prev })
-      : null;
-    if (!record) return null;
+    if (!this.llm) {
+      result.skipReason = "no-llm";
+      this.reporter?.report(instanceId, result);
+      return null;
+    }
 
+    result.triggered = true;
+    const outcome = await this.callModel({ today, base, dialogue, memoryTopics, prev });
+    result.llmRaw = outcome.llmRaw;
+    if (outcome.error) {
+      result.error = outcome.error;
+      this.reporter?.report(instanceId, result);
+      return null;
+    }
+    if (!outcome.record) {
+      result.skipReason = "model-empty";
+      this.reporter?.report(instanceId, result);
+      return null;
+    }
+
+    const record = outcome.record;
     const newId = `persona-drift-${today}-${Math.random().toString(36).slice(2, 8)}`;
     const node: GraphNode = {
       id: newId,
@@ -202,6 +283,8 @@ export class PersonaDriftService {
     };
     await this.store.addNode(node);
 
+    let causalEdges = 0;
+    let evidenceEdges = 0;
     // causal chain: link to the previous drift node
     if (chain.length > 0) {
       const e: GraphEdge = {
@@ -212,12 +295,26 @@ export class PersonaDriftService {
         weight: 1,
       };
       await this.store.addEdge(e);
+      causalEdges = 1;
     }
     // evidence edges back to the memories that supported the judgment
     for (const ev of record.evidence) {
       const e: GraphEdge = { from: newId, to: ev, kind: "relates", instanceId, weight: 1 };
       await this.store.addEdge(e);
+      evidenceEdges++;
     }
+
+    result.parsed = {
+      dims: record.dims,
+      cumulative: record.cumulative,
+      mood: record.mood,
+      leaning: record.leaning,
+      preoccupation: record.preoccupation,
+      rationale: record.rationale,
+      evidence: record.evidence,
+    };
+    result.written = { nodeId: newId, causalEdges, evidenceEdges };
+    this.reporter?.report(instanceId, result);
     return record;
   }
 
@@ -227,7 +324,7 @@ export class PersonaDriftService {
     dialogue: Array<{ u: string; a: string }>;
     memoryTopics: string[];
     prev: Record<string, number>;
-  }): Promise<DriftRecord | null> {
+  }): Promise<{ record: DriftRecord | null; llmRaw?: string; error?: "llm-error" | "bad-json" }> {
     const user = [
       `【base persona（不可修改的锚）】\n${ctx.base || "(无)"}`,
       `【近期对话（用户说 / 你当时的回应摘要）】\n${ctx.dialogue
@@ -242,15 +339,15 @@ export class PersonaDriftService {
     try {
       raw = await this.llm!.complete(INTROSPECT_SYSTEM, user);
     } catch {
-      return null; // model error → no drift today
+      return { record: null, llmRaw: raw, error: "llm-error" };
     }
     let json: any;
     try {
       json = JSON.parse(stripFence(raw));
     } catch {
-      return null; // bad JSON → no drift today
+      return { record: null, llmRaw: raw, error: "bad-json" };
     }
-    if (!json || typeof json !== "object" || Array.isArray(json)) return null;
+    if (!json || typeof json !== "object" || Array.isArray(json)) return { record: null, llmRaw: raw };
 
     // validate + clamp dims to the allowed set and the single-day cap
     const allowed = new Set(this.cfg.dims);
@@ -261,7 +358,7 @@ export class PersonaDriftService {
       if (!Number.isFinite(v)) continue;
       dims[k] = clamp(v, -this.cfg.dailyDeltaCap, this.cfg.dailyDeltaCap);
     }
-    if (Object.keys(dims).length === 0) return null; // 无合法维度 → 平凡日，跳过
+    if (Object.keys(dims).length === 0) return { record: null, llmRaw: raw }; // 平凡日
 
     // cumulative = prev + today's delta, clamped to the soft boundary
     const cumulative: Record<string, number> = { ...emptyDims(this.cfg.dims), ...ctx.prev };
@@ -275,14 +372,17 @@ export class PersonaDriftService {
       : [];
 
     return {
-      date: ctx.today,
-      dims,
-      cumulative,
-      mood: typeof json.mood === "string" ? json.mood : undefined,
-      leaning: typeof json.leaning === "string" ? json.leaning : undefined,
-      preoccupation: typeof json.preoccupation === "string" ? json.preoccupation : undefined,
-      rationale: typeof json.rationale === "string" ? json.rationale : undefined,
-      evidence,
+      record: {
+        date: ctx.today,
+        dims,
+        cumulative,
+        mood: typeof json.mood === "string" ? json.mood : undefined,
+        leaning: typeof json.leaning === "string" ? json.leaning : undefined,
+        preoccupation: typeof json.preoccupation === "string" ? json.preoccupation : undefined,
+        rationale: typeof json.rationale === "string" ? json.rationale : undefined,
+        evidence,
+      },
+      llmRaw: raw,
     };
   }
 
@@ -315,4 +415,35 @@ export class PersonaDriftService {
     if (lines.length === 0) return basePersona;
     return `${basePersona}\n\n【近期性格倾向】\n${lines.join("\n")}`;
   }
+}
+
+/**
+ * Read the structured introspection timeline for an instance from the
+ * append-only JSONL that FileDriftReporter writes. Returns [] when the file
+ * does not exist yet (no introspection has run). Shared by the remote API
+ * (golem-remote.ts) and any other reader so the file layout stays single-source.
+ */
+export async function readDriftRecords(
+  instanceId: string,
+  reportDir: string = loadPersonaDriftConfig().reportDir,
+): Promise<DriftExecutionResult[]> {
+  const file = path.join(reportDir, `${instanceId}.drift-records.jsonl`);
+  let text: string;
+  try {
+    text = await fs.readFile(file, "utf8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw e;
+  }
+  const out: DriftExecutionResult[] = [];
+  for (const line of text.split("\n")) {
+    const t = line.trim();
+    if (!t) continue;
+    try {
+      out.push(JSON.parse(t) as DriftExecutionResult);
+    } catch {
+      /* skip a corrupted line rather than failing the whole timeline */
+    }
+  }
+  return out;
 }

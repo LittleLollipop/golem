@@ -609,6 +609,7 @@ window.__ModuleLoader__.load({
 		};
 		const integer = /^-?\d+$/;
 		const number$1 = /^-?\d+(?:\.\d+)?$/;
+		const boolean$1 = /^(?:true|false)$/i;
 		const _null$2 = /^null$/i;
 		const lowercase = /^[^A-Z]*$/;
 		const uppercase = /^[^a-z]*$/;
@@ -1404,6 +1405,24 @@ window.__ModuleLoader__.load({
 			$ZodCheckNumberFormat.init(inst, def);
 			$ZodNumber.init(inst, def);
 		});
+		const $ZodBoolean = /*@__PURE__*/ $constructor("$ZodBoolean", (inst, def) => {
+			$ZodType.init(inst, def);
+			inst._zod.pattern = boolean$1;
+			inst._zod.parse = (payload, _ctx) => {
+				if (def.coerce) try {
+					payload.value = Boolean(payload.value);
+				} catch (_) {}
+				const input = payload.value;
+				if (typeof input === "boolean") return payload;
+				payload.issues.push({
+					expected: "boolean",
+					code: "invalid_type",
+					input,
+					inst
+				});
+				return payload;
+			};
+		});
 		const $ZodNull = /*@__PURE__*/ $constructor("$ZodNull", (inst, def) => {
 			$ZodType.init(inst, def);
 			inst._zod.pattern = _null$2;
@@ -1863,6 +1882,115 @@ window.__ModuleLoader__.load({
 			result.value = merged.data;
 			return result;
 		}
+		const $ZodRecord = /*@__PURE__*/ $constructor("$ZodRecord", (inst, def) => {
+			$ZodType.init(inst, def);
+			inst._zod.parse = (payload, ctx) => {
+				const input = payload.value;
+				if (!isPlainObject(input)) {
+					payload.issues.push({
+						expected: "record",
+						code: "invalid_type",
+						input,
+						inst
+					});
+					return payload;
+				}
+				const proms = [];
+				const values = def.keyType._zod.values;
+				if (values) {
+					payload.value = {};
+					const recordKeys = /* @__PURE__ */ new Set();
+					for (const key of values) if (typeof key === "string" || typeof key === "number" || typeof key === "symbol") {
+						recordKeys.add(typeof key === "number" ? key.toString() : key);
+						const keyResult = def.keyType._zod.run({
+							value: key,
+							issues: []
+						}, ctx);
+						if (keyResult instanceof Promise) throw new Error("Async schemas not supported in object keys currently");
+						if (keyResult.issues.length) {
+							payload.issues.push({
+								code: "invalid_key",
+								origin: "record",
+								issues: keyResult.issues.map((iss) => finalizeIssue(iss, ctx, config())),
+								input: key,
+								path: [key],
+								inst
+							});
+							continue;
+						}
+						const outKey = keyResult.value;
+						const result = def.valueType._zod.run({
+							value: input[key],
+							issues: []
+						}, ctx);
+						if (result instanceof Promise) proms.push(result.then((result) => {
+							if (result.issues.length) payload.issues.push(...prefixIssues(key, result.issues));
+							payload.value[outKey] = result.value;
+						}));
+						else {
+							if (result.issues.length) payload.issues.push(...prefixIssues(key, result.issues));
+							payload.value[outKey] = result.value;
+						}
+					}
+					let unrecognized;
+					for (const key in input) if (!recordKeys.has(key)) {
+						unrecognized = unrecognized ?? [];
+						unrecognized.push(key);
+					}
+					if (unrecognized && unrecognized.length > 0) payload.issues.push({
+						code: "unrecognized_keys",
+						input,
+						inst,
+						keys: unrecognized
+					});
+				} else {
+					payload.value = {};
+					for (const key of Reflect.ownKeys(input)) {
+						if (key === "__proto__") continue;
+						if (!Object.prototype.propertyIsEnumerable.call(input, key)) continue;
+						let keyResult = def.keyType._zod.run({
+							value: key,
+							issues: []
+						}, ctx);
+						if (keyResult instanceof Promise) throw new Error("Async schemas not supported in object keys currently");
+						if (typeof key === "string" && number$1.test(key) && keyResult.issues.length) {
+							const retryResult = def.keyType._zod.run({
+								value: Number(key),
+								issues: []
+							}, ctx);
+							if (retryResult instanceof Promise) throw new Error("Async schemas not supported in object keys currently");
+							if (retryResult.issues.length === 0) keyResult = retryResult;
+						}
+						if (keyResult.issues.length) {
+							if (def.mode === "loose") payload.value[key] = input[key];
+							else payload.issues.push({
+								code: "invalid_key",
+								origin: "record",
+								issues: keyResult.issues.map((iss) => finalizeIssue(iss, ctx, config())),
+								input: key,
+								path: [key],
+								inst
+							});
+							continue;
+						}
+						const result = def.valueType._zod.run({
+							value: input[key],
+							issues: []
+						}, ctx);
+						if (result instanceof Promise) proms.push(result.then((result) => {
+							if (result.issues.length) payload.issues.push(...prefixIssues(key, result.issues));
+							payload.value[keyResult.value] = result.value;
+						}));
+						else {
+							if (result.issues.length) payload.issues.push(...prefixIssues(key, result.issues));
+							payload.value[keyResult.value] = result.value;
+						}
+					}
+				}
+				if (proms.length) return Promise.all(proms).then(() => payload);
+				return payload;
+			};
+		});
 		const $ZodEnum = /*@__PURE__*/ $constructor("$ZodEnum", (inst, def) => {
 			$ZodType.init(inst, def);
 			const values = getEnumValues(def.entries);
@@ -2470,6 +2598,13 @@ window.__ModuleLoader__.load({
 			});
 		}
 		// @__NO_SIDE_EFFECTS__
+		function _boolean(Class, params) {
+			return new Class({
+				type: "boolean",
+				...normalizeParams(params)
+			});
+		}
+		// @__NO_SIDE_EFFECTS__
 		function _null$1(Class, params) {
 			return new Class({
 				type: "null",
@@ -3022,6 +3157,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			else if (typeof maximum === "number") json.maximum = maximum;
 			if (typeof multipleOf === "number") json.multipleOf = multipleOf;
 		};
+		const booleanProcessor = (_schema, _ctx, json, _params) => {
+			json.type = "boolean";
+		};
 		const nullProcessor = (_schema, ctx, json, _params) => {
 			if (ctx.target === "openapi-3.0") {
 				json.type = "string";
@@ -3141,6 +3279,39 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			});
 			const isSimpleIntersection = (val) => "allOf" in val && Object.keys(val).length === 1;
 			json.allOf = [...isSimpleIntersection(a) ? a.allOf : [a], ...isSimpleIntersection(b) ? b.allOf : [b]];
+		};
+		const recordProcessor = (schema, ctx, _json, params) => {
+			const json = _json;
+			const def = schema._zod.def;
+			json.type = "object";
+			const keyType = def.keyType;
+			const patterns = keyType._zod.bag?.patterns;
+			if (def.mode === "loose" && patterns && patterns.size > 0) {
+				const valueSchema = process(def.valueType, ctx, {
+					...params,
+					path: [
+						...params.path,
+						"patternProperties",
+						"*"
+					]
+				});
+				json.patternProperties = {};
+				for (const pattern of patterns) json.patternProperties[pattern.source] = valueSchema;
+			} else {
+				if (ctx.target === "draft-07" || ctx.target === "draft-2020-12") json.propertyNames = process(def.keyType, ctx, {
+					...params,
+					path: [...params.path, "propertyNames"]
+				});
+				json.additionalProperties = process(def.valueType, ctx, {
+					...params,
+					path: [...params.path, "additionalProperties"]
+				});
+			}
+			const keyValues = keyType._zod.values;
+			if (keyValues) {
+				const validKeyValues = [...keyValues].filter((v) => typeof v === "string" || typeof v === "number");
+				if (validKeyValues.length > 0) json.required = validKeyValues;
+			}
 		};
 		const nullableProcessor = (schema, ctx, json, params) => {
 			const def = schema._zod.def;
@@ -3678,6 +3849,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		function int(params) {
 			return /* @__PURE__ */ _int(ZodNumberFormat, params);
 		}
+		const ZodBoolean = /*@__PURE__*/ $constructor("ZodBoolean", (inst, def) => {
+			$ZodBoolean.init(inst, def);
+			ZodType.init(inst, def);
+			inst._zod.processJSONSchema = (ctx, json, params) => booleanProcessor(inst, ctx, json, params);
+		});
+		function boolean(params) {
+			return /* @__PURE__ */ _boolean(ZodBoolean, params);
+		}
 		const ZodNull = /*@__PURE__*/ $constructor("ZodNull", (inst, def) => {
 			$ZodNull.init(inst, def);
 			ZodType.init(inst, def);
@@ -3822,6 +4001,27 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				type: "intersection",
 				left,
 				right
+			});
+		}
+		const ZodRecord = /*@__PURE__*/ $constructor("ZodRecord", (inst, def) => {
+			$ZodRecord.init(inst, def);
+			ZodType.init(inst, def);
+			inst._zod.processJSONSchema = (ctx, json, params) => recordProcessor(inst, ctx, json, params);
+			inst.keyType = def.keyType;
+			inst.valueType = def.valueType;
+		});
+		function record(keyType, valueType, params) {
+			if (!valueType || !valueType._zod) return new ZodRecord({
+				type: "record",
+				keyType: string(),
+				valueType: keyType,
+				...normalizeParams(valueType)
+			});
+			return new ZodRecord({
+				type: "record",
+				keyType,
+				valueType,
+				...normalizeParams(params)
 			});
 		}
 		const ZodEnum = /*@__PURE__*/ $constructor("ZodEnum", (inst, def) => {
@@ -4075,6 +4275,44 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			createdAt: number().optional(),
 			turns: number().optional()
 		});
+		const driftInputSchema = object({
+			dialogTurns: number(),
+			recentDays: number(),
+			memoryTopics: number(),
+			historyDrifts: number()
+		});
+		const driftParsedSchema = object({
+			dims: record(string(), number()),
+			cumulative: record(string(), number()),
+			mood: string().optional(),
+			leaning: string().optional(),
+			preoccupation: string().optional(),
+			rationale: string().optional(),
+			evidence: array(string())
+		});
+		const driftWrittenSchema = object({
+			nodeId: string(),
+			causalEdges: number(),
+			evidenceEdges: number()
+		});
+		const driftRecordSchema = object({
+			instanceId: string(),
+			date: string(),
+			triggeredAt: string(),
+			triggered: boolean(),
+			skipReason: _enum([
+				"already-done",
+				"no-dialogue",
+				"no-llm",
+				"model-empty"
+			]).optional(),
+			existingNodeId: string().optional(),
+			input: driftInputSchema.optional(),
+			llmRaw: string().optional(),
+			error: _enum(["llm-error", "bad-json"]).optional(),
+			parsed: driftParsedSchema.optional(),
+			written: driftWrittenSchema.optional()
+		});
 		/**
 		* 构造一个 strict codec。`schema` 必须为 zod v4（带 `_zod` 标记），客户端
 		* 在解析结果/参数时会调用 `schema.parse(value)`。
@@ -4210,6 +4448,20 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						codec: strict("golem/types#InstanceId", string())
 					}],
 					result: strict("golem/types#null", remoteResult(_null()))
+				},
+				{
+					id: "golem#golem/getDriftRecords",
+					service: "golem",
+					namespace: "golem",
+					method: "getDriftRecords",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "instanceId",
+						wire: "instanceId",
+						source: "json",
+						codec: strict("golem/types#InstanceId", string())
+					}],
+					result: strict("golem/types#DriftRecord[]", remoteResult(array(driftRecordSchema)))
 				}
 			]
 		};

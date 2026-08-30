@@ -5,14 +5,16 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [0.4.0] - 待发布（实现完成，未发 release）
+## [0.4.0] - 2026-08-30
 
 性格漂移（persona-drift）：让假人通过每日一次的内省任务，基于近期记忆与对话自动微调「性格方向」，日积月累形成性格缓慢漂移。
 
 ### Added
 - **性格漂移服务**（`src/agent/persona-drift.ts`）：每日（跨日后首次 idle）读取近期对话(`assistantSummary`)+记忆+历史 drift 链，调用宿主 LLM 产出**结构化维度偏移**；持久化为 `Event` 节点(`props.kind="persona_drift"`)，并用 `causal` 边串成演进链、`relates` 边连支撑证据。
 - **effective persona 合成**：`composeEffectivePersona(base, instanceId)` 读图取最新累积偏移，把维度翻译成自然语言倾向追加到 base 之后（base 永不被改写，仅追加 `【近期性格倾向】` 段）。`index.ts` 的 pre-step 注入点改用 effective persona。
-- **配置外置**（`src/leak/config.ts` 的 `PersonaDriftConfig` + `loadPersonaDriftConfig`）：`FAKEREN_DRIFT_ENABLED`(默认开)/`DAILY_CAP`(0.15)/`CLAMP`(1.0)/`RECENT_DAYS`(7)/`HISTORY_DAYS`(14)/`DIMS`(5 维)。
+- **配置外置**（`src/leak/config.ts` 的 `PersonaDriftConfig` + `loadPersonaDriftConfig`）：`FAKEREN_DRIFT_ENABLED`(默认开)/`DAILY_CAP`(0.15)/`CLAMP`(1.0)/`RECENT_DAYS`(7)/`HISTORY_DAYS`(14)/`DIMS`(5 维)/`REPORT_DIR`(默认 `~/.fakeren/drift-reports`)。
+- **内省可见性**（`src/agent/drift-reporter.ts` 新增 `DriftReporter` 接口 + `FileDriftReporter`）：每次内省结果落盘为 append-only JSONL（`<inst>.drift-records.jsonl`）+ 易读 `.drift-log.md` + `.last.json`，并打 `[golem:drift]` 日志（✅ 成功 / ⚠️ 跳过 / ⏭️ 无记录），消除黑盒。
+- **dsh 内部「内省记录」仪表盘**（`client/ui-golem-config/src/DriftDashboard.tsx`）：复用 golem 现有 settings「假人」面板，新增「内省记录」标签页，时间线展示历次内省的维度偏移与支撑证据，5s 自动刷新；数据经 `getDriftRecords` remote 通道（`src/golem-remote.ts` + `client/ui-golem-remote` descriptor）从 JSONL 读取。
 
 ### 设计决策（§12 开放问题已决）
 - **Q1 去重**：不引入额外状态文件，直接查图「今日是否已有 `persona_drift` 节点」——演进链本身即真相，规避 D1「记忆走 axolotl 唯一」铁律张力。
@@ -22,6 +24,7 @@
 
 ### Changed
 - idle 维护链（`index.ts:runIdle`）新增 `personaDrift.introspect`（在 `l05.tick` 之后、`idleMaintenance` 之前）；pre-step persona 来源由 base 改为 effective。
+- `index.ts` 构造时注入 `FileDriftReporter`；`readDriftRecords(instanceId, cfg)` 导出供 remote 通道读取。
 
 ### 测试
 - 新增 `tests/persona-drift.test.ts`（9 用例）：无 drift→base 原样、有 drift→追加倾向、累积 clamp、按日历日幂等、无 LLM 跳过、无对话跳过、happy path 写节点+causal+relates 边、单日增量 clamp、丢弃非维度字段。

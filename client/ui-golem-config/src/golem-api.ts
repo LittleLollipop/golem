@@ -1,5 +1,5 @@
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import type { GolemRemoteApi, InstanceMeta } from './types.ts'
+import type { GolemRemoteApi, InstanceMeta, DriftExecutionResult } from './types.ts'
 
 /**
  * 把 `ctx.remote.golem`（返回 `RemoteResult<T>`）包成「直接返回 T、失败时抛错」
@@ -14,6 +14,7 @@ export interface GolemApi {
   getDefaultInstance(): Promise<string | null>
   setDefaultInstance(id: string): Promise<null>
   deleteInstance(id: string): Promise<null>
+  getDriftRecords(instanceId: string): Promise<DriftExecutionResult[]>
 }
 
 /**
@@ -53,5 +54,6 @@ export function createGolemApi(remote: GolemRemoteApi): GolemApi {
     getDefaultInstance: () => remote.getDefaultInstance().then(unwrap),
     setDefaultInstance: (id) => remote.setDefaultInstance(id).then(unwrap),
     deleteInstance: (id) => remote.deleteInstance(id).then(unwrap),
+    getDriftRecords: (id) => remote.getDriftRecords(id).then(unwrap),
   }
 }

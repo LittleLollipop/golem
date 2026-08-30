@@ -45,6 +45,7 @@ import { HttpLlmClient } from "./llm/client.js";
 import type { DshContext, UserMessage } from "./types.js";
 import { GolemRemoteService } from "./golem-remote.js";
 import * as fs from "node:fs";
+import { FileDriftReporter } from "./agent/drift-reporter.js";
 import { recallBudget } from "./recall-budget.js";
 import { createMemoryRecallTool } from "./tools/memory-recall.js";
 
@@ -175,7 +176,7 @@ export function apply(ctx: DshContext, config: GolemConfig = {}): void {
   }
   const agent = new GolemAgent(classifier, drift, recall, situational, writer, consolidator, bus, dsh, new LeakPostFilter());
   // 性格漂移（persona-drift.md）：每日 idle 内省 → 维度偏移累积 → effective persona
-  const personaDrift = new PersonaDriftService(store, llm, driftCfg);
+  const personaDrift = new PersonaDriftService(store, llm, driftCfg, new FileDriftReporter(driftCfg.reportDir));
 
   // Instance binding immutability is enforced at InstanceRegistry.select()
   // (throws on mid-session conflict); no separate runtime re-check needed.
