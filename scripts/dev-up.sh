@@ -41,6 +41,22 @@ else
 fi
 
 # --- dsh web ---
+# ⚠️ 注入 LLM key：dsh 默认不把 ~/.dsh/.credentials.yaml 的 key 注入插件 env，
+# 导致 golem 的 llm 为 undefined → LearningPlanner / 性格漂移 introspect 全部无法
+# 真正运行（目的轨被「无模型规划」空消耗、当天永久跳过）。在此从 dsh 凭据提取并
+# export，确保 golem 的 planner/drift 能用模型。改 src 后必须重建 dist（见下）。
+DSH_CREDS="$HOME/.dsh/.credentials.yaml"
+if [ -f "$DSH_CREDS" ]; then
+  _EXTRACTED_KEY=$(grep "DEEPSEEK_API_KEY" "$DSH_CREDS" | head -1 | awk -F': ' '{print $2}')
+  if [ -n "$_EXTRACTED_KEY" ]; then
+    export DEEPSEEK_API_KEY="$_EXTRACTED_KEY"
+    echo "[dev-up] DEEPSEEK_API_KEY injected from dsh credentials"
+  else
+    echo "[dev-up] WARN: DEEPSEEK_API_KEY not found in $DSH_CREDS; golem llm disabled"
+  fi
+else
+  echo "[dev-up] WARN: $DSH_CREDS not found; golem llm disabled"
+fi
 if port_free "$DSH_PORT"; then
   # dsh loads golem from its BUILT dist/ (package main = dist/index.js), NOT src/.
   # Always rebuild so source edits actually reach the running process.

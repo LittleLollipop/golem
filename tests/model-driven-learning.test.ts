@@ -155,6 +155,75 @@ describe("DailyKnowledgeTracker dual-track (req_l05 dual-track)", () => {
     const r3 = await tr.ensureToday("instA");
     expect(r3.random && r3.purposeful).toBeTruthy();
   });
+
+  it("no planner (undefined) does NOT consume the daily purposeful slot; ready planner retries same day", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "golem-nop-"));
+    try {
+      const clock = makeClock();
+      const randomSrc = new FakeSource([cand("r1", "随机条目")]);
+      const purposefulSrc = new FakeSource([cand("p1", "目的条目")]);
+      const sources = new KnowledgeSourceRegistry(
+        { wiki: purposefulSrc, news: purposefulSrc, social: purposefulSrc, web: purposefulSrc, static: purposefulSrc },
+        "wiki",
+      );
+      // 1) 无 planner：两次 idle 都不应占槽 / 不写记录
+      const trNoPlanner = new DailyKnowledgeTracker(randomSrc, sources, dir, undefined, clock.now);
+      expect((await trNoPlanner.ensureToday("instA")).purposeful).toBeUndefined();
+      expect((await trNoPlanner.ensureToday("instA")).purposeful).toBeUndefined();
+      // 2) 同目录、注入 planner：同 idle 应能真正跑（闸门未被空消耗）
+      const planner = { plan: async () => ({ source: "wiki", query: "q", rationale: "r" }) } as any;
+      const trReady = new DailyKnowledgeTracker(randomSrc, sources, dir, planner, clock.now);
+      const res = await trReady.ensureToday("instA");
+      expect(res.purposeful?.status).toBe("learned");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("legacy ledger: a prior 'no-planner' empty no longer blocks a ready planner same day", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "golem-legacy-"));
+    try {
+      const clock = makeClock();
+      const randomSrc = new FakeSource([cand("r1", "随机条目")]);
+      const purposefulSrc = new FakeSource([cand("p1", "目的条目")]);
+      const sources = new KnowledgeSourceRegistry(
+        { wiki: purposefulSrc, news: purposefulSrc, social: purposefulSrc, web: purposefulSrc, static: purposefulSrc },
+        "wiki",
+      );
+      const today = "2026-08-25";
+      // 模拟旧版本留下的「无模型规划」空记录（purposefulDoneDate 已设为当天）
+      const legacy: any = {
+        instanceId: "instA",
+        learnedIds: [],
+        lastLearnedDate: today,
+        trajectory: [
+          {
+            id: "status-purposeful-" + today + "-empty-xxxx",
+            title: "(无内容)",
+            summary: "无模型规划，目的轨跳过",
+            source: "model-planned",
+            sourceUrl: "",
+            learnedAt: clock.now().getTime(),
+            chosenRank: 0,
+            selectionPath: "目的轨: empty",
+            kind: "purposeful",
+            status: "empty",
+            statusNote: "无模型规划，目的轨跳过",
+          },
+        ],
+        randomDoneDate: today,
+        purposefulDoneDate: today,
+      };
+      fs.writeFileSync(path.join(dir, "instA.json"), JSON.stringify(legacy));
+      // 注入 planner 后，应能识别该空记录为「未真正完成」并重试
+      const planner = { plan: async () => ({ source: "wiki", query: "q", rationale: "r" }) } as any;
+      const trReady = new DailyKnowledgeTracker(randomSrc, sources, dir, planner, clock.now);
+      const res = await trReady.ensureToday("instA");
+      expect(res.purposeful?.status).toBe("learned");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("LearningPlanner (model-driven, env pinSource = lock channel not model)", () => {

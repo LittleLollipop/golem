@@ -154,7 +154,7 @@ export function apply(ctx: DshContext, config: GolemConfig = {}): void {
   const driftCfg = loadPersonaDriftConfig();
   const l05 = new L05Trajectory(knowledgeTracker, 7, schedulerLog, leakCfg.l05FreshDays);
   console.log(
-    `[golem] L0.5 = dual-track (random: wikipedia/random + purposeful: ${planner ? "model-planned[wiki/news/social/web]" : "no-LLM → 记 empty 状态"})`,
+    `[golem] L0.5 = dual-track (random: wikipedia/random + purposeful: ${planner ? "model-planned[wiki/news/social/web]" : "no-LLM → 目的轨不占槽，key 就绪后自动重试"})`,
   );
 
   const drift = new DriftChannel(reader, dsh, registry, ambientSource.getBuffer(), l05, leakCfg, schedulerLog);

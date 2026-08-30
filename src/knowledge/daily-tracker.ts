@@ -67,6 +67,21 @@ export class DailyKnowledgeTracker {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
 
+  /**
+   * 目的轨当天是否还应运行。
+   *
+   * 容错（修复「无 llm 时空消耗目的轨、导致当天永久跳过」）：
+   * 若当天已记的 purposeful 是一条「无模型规划」空记录（planner 缺失导致，
+   * 通常是 dsh 启动未注入 LLM key），视为**未真正完成**，待 llm 就绪后
+   * （注入 key 重启 / 下一次 idle）允许重试，而不是被每日一次闸门永久关掉。
+   */
+  private purposefulShouldRun(st: TrackerState): boolean {
+    if (st.purposefulDoneDate !== this.today()) return true;
+    const last = [...st.trajectory].reverse().find((f) => f.kind === "purposeful");
+    if (last && last.status === "empty" && last.statusNote?.includes("无模型规划")) return true;
+    return false;
+  }
+
   private fileFor(instanceId: string): string {
     return path.join(this.dir, `${instanceId}.json`);
   }
@@ -152,54 +167,59 @@ export class DailyKnowledgeTracker {
     }
 
     // ── Slot 2: PURPOSEFUL (model-driven; abstract status, never fallback) ──
-    if (st.purposefulDoneDate !== today) {
-      const directive: LearningDirective | null = this.planner
-        ? await this.planner.plan(instanceId)
-        : null;
-      let rec: LearnedFact;
-      if (!directive) {
-        // 无模型规划 / 空图 / 规划失败 → 记 empty，不调源、不兜底默认内容
-        rec = this.persistStatus(
-          st,
-          "purposeful",
-          "empty",
-          today,
-          null,
-          this.planner ? "规划未产出指令（图库为空 / 模型无法判断）" : "无模型规划，目的轨跳过",
-        );
+    // 闸门容错：若当天曾因「无模型规划（llm 未就绪）」被空消耗，则不视为已完成，
+    // 待 llm 就绪后（注入 key 重启 / 下一次 idle）重试，避免目的轨被永久跳过。
+    if (this.purposefulShouldRun(st)) {
+      if (!this.planner) {
+        // machinery 未就绪（无 LLM）：本次不写记录、不占当天槽，待 llm 就绪后重试。
+        // 注意：不设 purposefulDoneDate、不写 record，避免闸门被空消耗。
       } else {
-        const backend = directive.source;
-        try {
-          const c = await this.sources.get(backend).rankedCandidates(directive);
-          const good = this.qualityGate(c);
-          const chosen = this.firstNotLearned(good, st.learnedIds);
-          if (chosen) {
-            rec = this.persist(st, chosen, "purposeful", "learned", today, directive);
-          } else if (c.length === 0) {
-            rec = this.persistStatus(st, "purposeful", "empty", today, directive, "检索返回 0 条");
-          } else {
-            rec = this.persistStatus(
-              st,
-              "purposeful",
-              "junk",
-              today,
-              directive,
-              "结果均疑似广告/垃圾，已丢弃",
-            );
-          }
-        } catch (e) {
+        const directive: LearningDirective | null = await this.planner.plan(instanceId);
+        let rec: LearnedFact;
+        if (!directive) {
+          // 空图 / 规划失败 → 记 empty，不调源、不兜底默认内容
           rec = this.persistStatus(
             st,
             "purposeful",
-            "error",
+            "empty",
             today,
-            directive,
-            `源异常: ${(e as Error).message}`,
+            null,
+            "规划未产出指令（图库为空 / 模型无法判断）",
           );
+        } else {
+          const backend = directive.source;
+          try {
+            const c = await this.sources.get(backend).rankedCandidates(directive);
+            const good = this.qualityGate(c);
+            const chosen = this.firstNotLearned(good, st.learnedIds);
+            if (chosen) {
+              rec = this.persist(st, chosen, "purposeful", "learned", today, directive);
+            } else if (c.length === 0) {
+              rec = this.persistStatus(st, "purposeful", "empty", today, directive, "检索返回 0 条");
+            } else {
+              rec = this.persistStatus(
+                st,
+                "purposeful",
+                "junk",
+                today,
+                directive,
+                "结果均疑似广告/垃圾，已丢弃",
+              );
+            }
+          } catch (e) {
+            rec = this.persistStatus(
+              st,
+              "purposeful",
+              "error",
+              today,
+              directive,
+              `源异常: ${(e as Error).message}`,
+            );
+          }
         }
+        out.purposeful = rec;
+        st.purposefulDoneDate = today;
       }
-      out.purposeful = rec;
-      st.purposefulDoneDate = today;
     }
 
     this.save(st);
