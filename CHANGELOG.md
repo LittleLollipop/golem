@@ -5,6 +5,27 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.0] - 待发布（实现完成，未发 release）
+
+性格漂移（persona-drift）：让假人通过每日一次的内省任务，基于近期记忆与对话自动微调「性格方向」，日积月累形成性格缓慢漂移。
+
+### Added
+- **性格漂移服务**（`src/agent/persona-drift.ts`）：每日（跨日后首次 idle）读取近期对话(`assistantSummary`)+记忆+历史 drift 链，调用宿主 LLM 产出**结构化维度偏移**；持久化为 `Event` 节点(`props.kind="persona_drift"`)，并用 `causal` 边串成演进链、`relates` 边连支撑证据。
+- **effective persona 合成**：`composeEffectivePersona(base, instanceId)` 读图取最新累积偏移，把维度翻译成自然语言倾向追加到 base 之后（base 永不被改写，仅追加 `【近期性格倾向】` 段）。`index.ts` 的 pre-step 注入点改用 effective persona。
+- **配置外置**（`src/leak/config.ts` 的 `PersonaDriftConfig` + `loadPersonaDriftConfig`）：`FAKEREN_DRIFT_ENABLED`(默认开)/`DAILY_CAP`(0.15)/`CLAMP`(1.0)/`RECENT_DAYS`(7)/`HISTORY_DAYS`(14)/`DIMS`(5 维)。
+
+### 设计决策（§12 开放问题已决）
+- **Q1 去重**：不引入额外状态文件，直接查图「今日是否已有 `persona_drift` 节点」——演进链本身即真相，规避 D1「记忆走 axolotl 唯一」铁律张力。
+- **Q2 合成**：方案 A（base 全文 + 追加倾向描述），保持 `channel="persona"` 每 session 注入一次不变。
+- **Q3 无对话**：跳过当天（演进链断档），断档本身有信息量。
+- **base 不可变**：LLM 输出中任何非维度字段（如企图改写 persona）一律丢弃；单日增量 clamp ±0.15，累积 clamp ±1.0，越界拒绝本次 drift。
+
+### Changed
+- idle 维护链（`index.ts:runIdle`）新增 `personaDrift.introspect`（在 `l05.tick` 之后、`idleMaintenance` 之前）；pre-step persona 来源由 base 改为 effective。
+
+### 测试
+- 新增 `tests/persona-drift.test.ts`（9 用例）：无 drift→base 原样、有 drift→追加倾向、累积 clamp、按日历日幂等、无 LLM 跳过、无对话跳过、happy path 写节点+causal+relates 边、单日增量 clamp、丢弃非维度字段。
+
 ## [0.3.0] - 2026-08-29
 
 假人 dsh 插件：自记忆（axolotl 图后端）驱动的潜意识渗漏（L0/L0.5/L1）。本版聚焦**记忆召回质量**与**跨重启持久化**。

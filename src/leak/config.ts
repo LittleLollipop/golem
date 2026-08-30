@@ -52,3 +52,47 @@ export function loadLeakConfig(): LeakConfig {
     minValence: num(process.env.FAKEREN_LEAK_MIN_VALENCE, 0),
   };
 }
+
+// ── Persona Drift (性格漂移) ──────────────────────────────────────────────
+// 维度偏移 + 累积 clamp + 单日增量上限，全部外置可调（req_persona_drift_tunable）。
+//   FAKEREN_DRIFT_ENABLED      总开关 (1/true | 0/false，默认开)
+//   FAKEREN_DRIFT_DAILY_CAP    单日增量上限 (默认 0.15)
+//   FAKEREN_DRIFT_CLAMP        累积上限 (默认 1.0)
+//   FAKEREN_DRIFT_RECENT_DAYS  近期对话/记忆窗口 (默认 7)
+//   FAKEREN_DRIFT_HISTORY_DAYS 历史 drift 链窗口 (默认 14)
+//   FAKEREN_DRIFT_DIMS         维度集合 (逗号分隔)
+
+export interface PersonaDriftConfig {
+  /** master switch — off → intro任务 completely skipped. */
+  enabled: boolean;
+  /** per-dimension single-day delta cap (|Δ| <= this). */
+  dailyDeltaCap: number;
+  /** cumulative clamp per dimension (value held within [-clamp, clamp]). */
+  cumulativeClamp: number;
+  /** recent dialogue/memory window in days (input assembly). */
+  recentDays: number;
+  /** how far back the drift chain is consulted for "current leanings". */
+  historyDays: number;
+  /** the personality dimensions the introspection may move. */
+  dims: string[];
+}
+
+function boolEnv(env: string | undefined, fallback: boolean): boolean {
+  if (env === undefined) return fallback;
+  return env === "1" || env.toLowerCase() === "true";
+}
+
+export function loadPersonaDriftConfig(): PersonaDriftConfig {
+  const dimsEnv = process.env.FAKEREN_DRIFT_DIMS;
+  const dims = dimsEnv
+    ? dimsEnv.split(",").map((s) => s.trim()).filter(Boolean)
+    : ["openness", "warmth", "verbosity", "playfulness", "assertiveness"];
+  return {
+    enabled: boolEnv(process.env.FAKEREN_DRIFT_ENABLED, true),
+    dailyDeltaCap: num(process.env.FAKEREN_DRIFT_DAILY_CAP, 0.15),
+    cumulativeClamp: num(process.env.FAKEREN_DRIFT_CLAMP, 1.0),
+    recentDays: num(process.env.FAKEREN_DRIFT_RECENT_DAYS, 7),
+    historyDays: num(process.env.FAKEREN_DRIFT_HISTORY_DAYS, 14),
+    dims,
+  };
+}

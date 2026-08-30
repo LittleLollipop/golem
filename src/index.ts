@@ -37,7 +37,8 @@ import { LlmGrader } from "./agent/llm-grader.js";
 import type { TaskClassifier } from "./agent/grader.js";
 import { GolemAgent } from "./agent/golem-agent.js";
 import { LeakPostFilter } from "./leak/post-filter.js";
-import { loadLeakConfig } from "./leak/config.js";
+import { loadLeakConfig, loadPersonaDriftConfig } from "./leak/config.js";
+import { PersonaDriftService } from "./agent/persona-drift.js";
 import { BackgroundTaskLog } from "./scheduler/background-log.js";
 import type { LlmClient } from "./llm/client.js";
 import { HttpLlmClient } from "./llm/client.js";
@@ -149,6 +150,7 @@ export function apply(ctx: DshContext, config: GolemConfig = {}): void {
     : undefined;
   knowledgeTracker = new DailyKnowledgeTracker(randomSource, knowledgeRegistry, knowledgeDir, planner);
   const leakCfg = loadLeakConfig();
+  const driftCfg = loadPersonaDriftConfig();
   const l05 = new L05Trajectory(knowledgeTracker, 7, schedulerLog, leakCfg.l05FreshDays);
   console.log(
     `[golem] L0.5 = dual-track (random: wikipedia/random + purposeful: ${planner ? "model-planned[wiki/news/social/web]" : "no-LLM → 记 empty 状态"})`,
@@ -172,6 +174,8 @@ export function apply(ctx: DshContext, config: GolemConfig = {}): void {
     console.error("[golem] FAILED to register memory_recall tool:", String(err));
   }
   const agent = new GolemAgent(classifier, drift, recall, situational, writer, consolidator, bus, dsh, new LeakPostFilter());
+  // 性格漂移（persona-drift.md）：每日 idle 内省 → 维度偏移累积 → effective persona
+  const personaDrift = new PersonaDriftService(store, llm, driftCfg);
 
   // Instance binding immutability is enforced at InstanceRegistry.select()
   // (throws on mid-session conflict); no separate runtime re-check needed.
@@ -196,7 +200,7 @@ export function apply(ctx: DshContext, config: GolemConfig = {}): void {
 
     // #27: per-instance persona, injected as the identity block.
     const meta = await registry.meta(instanceId);
-    const persona = meta?.persona ?? DEFAULT_PERSONA;
+    const persona = await personaDrift.composeEffectivePersona(meta?.persona ?? DEFAULT_PERSONA, instanceId);
 
     const userText = ev.claimed.map((m) => m.content).join("\n");
     const res = await agent.assemble(ev.claimed, userText, instanceId, persona, ev.sessionId);
@@ -220,6 +224,13 @@ export function apply(ctx: DshContext, config: GolemConfig = {}): void {
     for (const m of list) {
       // #51: ensure today's L0.5 knowledge fact is captured for this instance.
       await l05.tick(m.id);
+      if (driftCfg.enabled) {
+        try {
+          await personaDrift.introspect(m.id);
+        } catch (err) {
+          console.error(`[golem:idle] persona-drift introspect skipped for ${m.id}:`, err);
+        }
+      }
       await agent.idleMaintenance(m.id);
       // Build this instance's memory from each bound session's latest (now
       // CLOSED) turn. Must NOT run at pre-step — the session is live then and
