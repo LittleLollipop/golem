@@ -11,7 +11,7 @@
 export class RecallBudget {
   private readonly counts = new Map<string, number>();
 
-  constructor(private readonly perTurnLimit = 3) {}
+  constructor(private readonly perTurnLimit = 6) {}
 
   /** Reset the allowance for a session at the start of a new turn. */
   reset(key: string): void {
@@ -33,4 +33,4 @@ export class RecallBudget {
 }
 
 /** Shared singleton: dsh-seams resets it (step 1), the tool consumes it. */
-export const recallBudget = new RecallBudget(3);
+export const recallBudget = new RecallBudget(6);

@@ -106,3 +106,25 @@ export function loadPersonaDriftConfig(): PersonaDriftConfig {
       path.join(os.homedir(), ".fakeren", "drift-reports"),
   };
 }
+
+// ── Persona Layering (基础人设分层, docs/persona-layering.md) ───────────────
+//   FAKEREN_PERSONA_LAYER_ENABLED  总开关 (1/true | 0/false，默认开)
+//   FAKEREN_PERSONA_CORE_MAX       core 超长告警阈值 (字符，0 = 不告警)
+//   FAKEREN_PERSONA_ANCHOR_ID      persona-identity 锚节点 id (默认 persona-identity)
+
+export interface PersonaLayerConfig {
+  /** master switch for the persona layering feature. */
+  enabled: boolean;
+  /** warn when personaCore exceeds this many chars (0 = no check). */
+  coreMax: number;
+  /** stable id of the in-graph persona-identity anchor node. */
+  anchorId: string;
+}
+
+export function loadPersonaLayerConfig(): PersonaLayerConfig {
+  return {
+    enabled: boolEnv(process.env.FAKEREN_PERSONA_LAYER_ENABLED, true),
+    coreMax: num(process.env.FAKEREN_PERSONA_CORE_MAX, 0),
+    anchorId: process.env.FAKEREN_PERSONA_ANCHOR_ID ?? "persona-identity",
+  };
+}

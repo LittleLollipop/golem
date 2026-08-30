@@ -38,7 +38,8 @@ import type { TaskClassifier } from "./agent/grader.js";
 import { GolemAgent } from "./agent/golem-agent.js";
 import { LeakPostFilter } from "./leak/post-filter.js";
 import { loadLeakConfig, loadPersonaDriftConfig } from "./leak/config.js";
-import { PersonaDriftService } from "./agent/persona-drift.js";
+import { PersonaDriftService, resolveCorePersona } from "./agent/persona-drift.js";
+import { PersonaSeed } from "./memory/persona-seed.js";
 import { BackgroundTaskLog } from "./scheduler/background-log.js";
 import type { LlmClient } from "./llm/client.js";
 import { HttpLlmClient } from "./llm/client.js";
@@ -119,6 +120,8 @@ export function apply(ctx: DshContext, config: GolemConfig = {}): void {
     llm ? new LlmExtractor(llm) : undefined,
     llm ? new LlmValence(llm) : undefined,
   );
+  // 人设分层 (docs/persona-layering.md)：把 personaExt 懒 seed 进图，连 persona-identity 锚。
+  const personaSeed = new PersonaSeed(store, writer);
   const classifier: TaskClassifier = llm ? new LlmGrader(llm) : new Grader();
 
   // ── #51: L0.5 每日知识轨迹 — 双轨 (随机机械 + 目的模型驱动) ──
@@ -164,7 +167,7 @@ export function apply(ctx: DshContext, config: GolemConfig = {}): void {
   // ── Mechanism B: model-driven memory pull (dual-mechanism-recall.md §4) ──
   // Register a dsh tool the model can call to fetch full memory nodes on demand,
   // so the auto-injected pointer block (Mechanism A) stays tiny while the model
-  // can still reach any memory. Budget-guarded (≤3/turn, reset at pre-step step
+  // can still reach any memory. Budget-guarded (≤6/turn, reset at pre-step step
   // 1); the tool calls RecallChannel.fetchNodes and formats the result.
   try {
     (ctx as any).tools?.register?.(
@@ -201,7 +204,13 @@ export function apply(ctx: DshContext, config: GolemConfig = {}): void {
 
     // #27: per-instance persona, injected as the identity block.
     const meta = await registry.meta(instanceId);
-    const persona = await personaDrift.composeEffectivePersona(meta?.persona ?? DEFAULT_PERSONA, instanceId);
+    // 基础人设分层：只注入精简 core（红线/身份/维度基线），ext 走图库 recall。
+    const corePersona = resolveCorePersona(meta, DEFAULT_PERSONA);
+    const persona = await personaDrift.composeEffectivePersona(corePersona, instanceId);
+    // 懒 seed personaExt 进图（幂等，fire-and-forget，不阻塞 pre-step）。
+    void personaSeed.ensureSeeded(instanceId, meta?.personaExt).catch((err) =>
+      console.error("[golem] persona seed failed:", String(err)),
+    );
 
     const userText = ev.claimed.map((m) => m.content).join("\n");
     const res = await agent.assemble(ev.claimed, userText, instanceId, persona, ev.sessionId);

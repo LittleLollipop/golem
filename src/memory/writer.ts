@@ -115,10 +115,19 @@ export class MemoryWriter {
     private readonly valence: ValenceEstimator = new HeuristicValence(),
   ) {}
 
-  async writeTurn(input: TurnInput): Promise<void> {
-    const { nodes, edges } = await this.extractor.extract(input);
+  /**
+   * Persist extracted nodes/edges into the graph. Shared by `writeTurn` and
+   * `writePersonaExt` (docs/persona-layering.md §4 — reuse the extractor seam,
+   * no second extraction channel). Returns the persisted node ids.
+   */
+  private async persist(
+    input: TurnInput,
+    extracted: { nodes: RawNode[]; edges: RawEdge[] },
+    provenanceId?: string,
+  ): Promise<string[]> {
     const ts = input.timestamp ?? Date.now();
-    for (const r of nodes) {
+    const ids: string[] = [];
+    for (const r of extracted.nodes) {
       const text = r.label + " " + JSON.stringify(r.props ?? {});
       const vec = await this.valence.estimate(text);
       const node: GraphNode = {
@@ -133,11 +142,12 @@ export class MemoryWriter {
         weight: 1.0,
         decayed: false,
         timestamp: ts,
-        provenanceId: `turn_${ts}`,
+        provenanceId: provenanceId ?? `turn_${ts}`,
       };
       await this.store.addNode(node);
+      ids.push(r.id);
     }
-    for (const e of edges) {
+    for (const e of extracted.edges) {
       const edge: GraphEdge = {
         from: e.from,
         to: e.to,
@@ -148,5 +158,32 @@ export class MemoryWriter {
       };
       await this.store.addEdge(edge);
     }
+    return ids;
+  }
+
+  async writeTurn(input: TurnInput): Promise<void> {
+    const extracted = await this.extractor.extract(input);
+    await this.persist(input, extracted);
+  }
+
+  /**
+   * Seed a persona-extended block (background / relations / preference
+   * instances / history) into the graph, wired to the persona-identity anchor
+   * (docs/persona-layering.md §4). Reuses the exact extractor used for dialogue
+   * — no second extraction channel. Returns the ids of seeded nodes.
+   */
+  async writePersonaExt(text: string, instanceId: InstanceId, anchorId: string): Promise<string[]> {
+    const input: TurnInput = { instanceId, userText: text, assistantText: "" };
+    const ids = await this.persist(input, await this.extractor.extract(input), `persona-seed_${Date.now()}`);
+    for (const id of ids) {
+      await this.store.addEdge({
+        from: id,
+        to: anchorId,
+        kind: "relates",
+        instanceId,
+        weight: 1.0,
+      });
+    }
+    return ids;
   }
 }

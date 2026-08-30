@@ -20,7 +20,12 @@ export class InstanceRegistry {
     return await this.store.listMeta();
   }
 
-  async create(id: InstanceId, name: string, persona?: string): Promise<InstanceMeta> {
+  async create(
+    id: InstanceId,
+    name: string,
+    persona?: string,
+    opts?: { personaCore?: string; personaExt?: string },
+  ): Promise<InstanceMeta> {
     const list = await this.readInstances();
     if (list.some((m) => m.id === id)) return list.find((m) => m.id === id)!;
     await this.store.ensureInstance(id); // creates the empty axolotl graph
@@ -30,6 +35,8 @@ export class InstanceRegistry {
       createdAt: Date.now(),
       turns: 0,
       ...(persona ? { persona } : {}),
+      ...(opts?.personaCore ? { personaCore: opts.personaCore } : {}),
+      ...(opts?.personaExt ? { personaExt: opts.personaExt } : {}),
     };
     await this.store.setMeta(id, meta);
     return meta;

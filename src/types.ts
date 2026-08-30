@@ -93,6 +93,17 @@ export interface InstanceMeta {
    * When absent the agent falls back to DEFAULT_PERSONA (#27).
    */
   persona?: string;
+  /**
+   * 常驻核心人设（精简：身份锚 + 红线 + 维度基线 + 护栏指令），每 session 注入。
+   * 优先于 `persona`；缺失时回退到 `persona`（兼容旧实例，见 docs/persona-layering.md §3）。
+   * 红线 / 身份 / 维度基线绝不进图库，只经此字段常驻注入。
+   */
+  personaCore?: string;
+  /**
+   * 人设扩展（背景故事 / 关系网络 / 偏好禁忌实例 / 历史事件），seed 进 axolotl 图库，
+   * 靠 memory_recall 按需拉取（docs/persona-layering.md §4）。不常驻注入。
+   */
+  personaExt?: string;
 }
 
 // ── Memory graph (维度 H) ─────────────────────────────────────────────────

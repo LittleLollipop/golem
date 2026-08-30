@@ -167,9 +167,8 @@ describe("DshAdapter.onPreStep — recall-pointer injection (dual-mechanism §3)
     const { recallBudget } = await import("../src/recall-budget.js");
     const key = "s-ptr-budget";
     recallBudget.reset(key);
-    recallBudget.tryConsume(key);
-    recallBudget.tryConsume(key);
-    recallBudget.tryConsume(key);
+    // 耗尽每轮上限（≤6/turn）后下一次返回 -1。
+    for (let i = 0; i < 6; i++) recallBudget.tryConsume(key);
     expect(recallBudget.tryConsume(key)).toBe(-1); // exhausted before step-1 pre-step
     await runPreStep({
       agent: { session: key },
@@ -177,7 +176,7 @@ describe("DshAdapter.onPreStep — recall-pointer injection (dual-mechanism §3)
       turn: 2,
       step: 1,
     });
-    expect(recallBudget.tryConsume(key)).toBe(2); // reset by the step-1 pre-step
+    expect(recallBudget.tryConsume(key)).toBe(5); // reset by the step-1 pre-step → limit-1
   });
 });
 

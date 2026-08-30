@@ -49,7 +49,13 @@ export class FakeGraphStore implements GraphStore {
   }
   async query(spec: QuerySpec): Promise<GraphNode[]> {
     return this.allNodes.filter(
-      (n) => n.instanceId === spec.instanceId && (!spec.type || n.type === spec.type),
+      (n) =>
+        n.instanceId === spec.instanceId &&
+        (!spec.type || n.type === spec.type) &&
+        (!spec.props ||
+          Object.entries(spec.props).every(
+            ([k, v]) => (n.props as Record<string, unknown> | undefined)?.[k] === v,
+          )),
     );
   }
   async recall(spec: QuerySpec): Promise<GraphNode[]> {

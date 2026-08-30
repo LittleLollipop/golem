@@ -22,8 +22,17 @@ import * as path from "node:path";
 import type { GraphStore } from "../memory/graph-store.js";
 import type { LlmClient } from "../llm/client.js";
 import { stripFence } from "../llm/client.js";
-import type { InstanceId, GraphNode, GraphEdge } from "../types.js";
+import type { InstanceId, GraphNode, GraphEdge, InstanceMeta } from "../types.js";
 import { loadPersonaDriftConfig, type PersonaDriftConfig } from "../leak/config.js";
+
+/**
+ * 解析「常驻核心人设」(docs/persona-layering.md §3)。
+ * 优先级：personaCore (显式精简核心) > persona (旧字段兼容) > fallback。
+ * 红线/身份/维度基线只从此处注入，绝不进图库 recall 路径。
+ */
+export function resolveCorePersona(meta: InstanceMeta | null | undefined, fallback: string): string {
+  return meta?.personaCore ?? meta?.persona ?? fallback;
+}
 
 /**
  * Human-readable per-dimension leanings, used to render the effective persona
@@ -242,7 +251,8 @@ export class PersonaDriftService {
     const prev = chain.length > 0 ? chain[chain.length - 1].rec.cumulative : emptyDims(this.cfg.dims);
     let base = "";
     try {
-      base = (await this.store.getMeta(instanceId))?.persona ?? "";
+      const m = await this.store.getMeta(instanceId);
+      base = m?.personaCore ?? m?.persona ?? "";
     } catch {
       /* ignore — base anchor optional for the prompt */
     }

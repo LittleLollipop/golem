@@ -39,8 +39,13 @@ export class GolemInstanceApi {
    * 新建一个假人实例（幂等：已存在则直接返回既有 meta）。
    * persona 可选；缺省时由 agent 回退到默认人格（#27）。
    */
-  async createInstance(id: InstanceId, name: string, persona?: string): Promise<InstanceMeta> {
-    return this.registry.create(id, name, persona);
+  async createInstance(
+    id: InstanceId,
+    name: string,
+    persona?: string,
+    opts?: { personaCore?: string; personaExt?: string },
+  ): Promise<InstanceMeta> {
+    return this.registry.create(id, name, persona, opts);
   }
 
   /** 读取单实例 meta，不存在返回 null。 */
