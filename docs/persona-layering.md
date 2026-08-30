@@ -1,6 +1,6 @@
 # 假人基础人设分层（Persona Layering）设计文档 v0.1
 
-> 状态：**已实现**（2026-08-30，代码已落地，待发版）
+> 状态：**已实现**（2026-08-30，代码 + 设置面板双栏 UI 已落地，待发版）
 > 日期：2026-08-30
 > 目标：把 base persona 拆为「常驻核心（core）+ 图库扩展（extended）」。core 每 session 注入、ext 进 axolotl 图库按需 recall，降低 token / 注意力成本、理顺与 drift 的分工，并让长期人设事实可经图记忆召回。
 >
@@ -144,7 +144,7 @@
 - **抽取失真**：seed 依赖 `LlmExtractor`，已知抽取边可能失真 → ext 节点可能不准。缓解：`personaExt` 是结构化设定原文，seed 时优先"按段落 / 条目解析"而非纯 LLM 抽取；或允许用户编辑 seed 结果。
 - **召回时机**：模型可能不主动 recall。缓解：push-hint 提示 + core 防编造句兜底。
 - **core / ext 切分主观**：缓解：身份 / 红线 / 维度句规则化识别 + UI（后续）让用户在设置里编辑 core vs ext。
-- **UI 增强（开放）**：是否在「假人」设置面板提供 core / ext 双栏编辑？
+- **UI 增强（已解决）**：已在「假人」设置面板提供 core / ext 双栏编辑（commit `a88a6ee`）——两个 textarea 分别写 `personaCore` / `personaExt`，保存走 `setInstanceMeta` 并回读校验；旧实例 `persona` 全文在 core 框回退显示，由用户手动拆分。
 
 ---
 
@@ -156,4 +156,4 @@
 4. ✅ 注入收敛：core 经 `composeEffectivePersona` 每 session 注入；ext 出 recall 路径（`index.ts` pre-step 懒 seed）。
 5. ✅ 配置项并入 `leak/config.ts`（`loadPersonaLayerConfig`：`FAKEREN_PERSONA_LAYER_ENABLED` / `FAKEREN_PERSONA_CORE_MAX` / `FAKEREN_PERSONA_ANCHOR_ID`）。
 6. ✅ 测试：`tests/persona-layering.test.ts`（resolveCorePersona 优先级 / writePersonaExt 连锚 / PersonaSeed 幂等）。
-7. ⬜ （可选）设置面板 core / ext 双栏编辑——未做，留待后续。
+7. ✅ 设置面板 core / ext 双栏编辑：`client/ui-golem-config/src/GolemSettings.tsx` 双 textarea 分别写 `personaCore` / `personaExt`，保存走 `setInstanceMeta` 并回读校验；`client/ui-golem-config/src/types.ts` 的 `InstanceMeta` 与 `client/ui-golem-remote` 的 meta/patch schema 同步加字段；重建两个 client lib（commit `a88a6ee`）。
