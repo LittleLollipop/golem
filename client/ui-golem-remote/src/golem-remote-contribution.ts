@@ -77,6 +77,29 @@ const driftRecordSchema = z.object({
   written: driftWrittenSchema.optional(),
 })
 
+// ── 知识获取轨迹（LearnedFact）schema ───────────────────────────────────────
+// 与 golem 服务端 `src/knowledge/types.ts` 的 LearnedFact 保持一致。
+const learnedFactSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  summary: z.string(),
+  source: z.string(),
+  sourceUrl: z.string(),
+  learnedAt: z.number(),
+  chosenRank: z.number(),
+  selectionPath: z.string(),
+  kind: z.enum(["random", "purposeful"]),
+  status: z.enum(["learned", "empty", "junk", "error"]),
+  directive: z
+    .object({
+      source: z.string(),
+      query: z.string().optional(),
+      rationale: z.string(),
+    })
+    .optional(),
+  statusNote: z.string().optional(),
+})
+
 /**
  * 构造一个 strict codec。`schema` 必须为 zod v4（带 `_zod` 标记），客户端
  * 在解析结果/参数时会调用 `schema.parse(value)`。
@@ -193,6 +216,17 @@ const descriptors: readonly InvocationDescriptor[] = [
       { name: 'instanceId', wire: 'instanceId', source: 'json', codec: strict('golem/types#InstanceId', z.string()) },
     ],
     result: strict('golem/types#DriftRecord[]', remoteResult(z.array(driftRecordSchema))),
+  },
+  {
+    id: 'golem#golem/getKnowledgeRecords',
+    service: 'golem',
+    namespace: 'golem',
+    method: 'getKnowledgeRecords',
+    invocation: { kind: 'direct' },
+    parameters: [
+      { name: 'instanceId', wire: 'instanceId', source: 'json', codec: strict('golem/types#InstanceId', z.string()) },
+    ],
+    result: strict('golem/types#LearnedFact[]', remoteResult(z.array(learnedFactSchema))),
   },
 ]
 

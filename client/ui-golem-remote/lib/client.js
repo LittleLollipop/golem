@@ -4313,6 +4313,29 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			parsed: driftParsedSchema.optional(),
 			written: driftWrittenSchema.optional()
 		});
+		const learnedFactSchema = object({
+			id: string(),
+			title: string(),
+			summary: string(),
+			source: string(),
+			sourceUrl: string(),
+			learnedAt: number(),
+			chosenRank: number(),
+			selectionPath: string(),
+			kind: _enum(["random", "purposeful"]),
+			status: _enum([
+				"learned",
+				"empty",
+				"junk",
+				"error"
+			]),
+			directive: object({
+				source: string(),
+				query: string().optional(),
+				rationale: string()
+			}).optional(),
+			statusNote: string().optional()
+		});
 		/**
 		* 构造一个 strict codec。`schema` 必须为 zod v4（带 `_zod` 标记），客户端
 		* 在解析结果/参数时会调用 `schema.parse(value)`。
@@ -4462,6 +4485,20 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						codec: strict("golem/types#InstanceId", string())
 					}],
 					result: strict("golem/types#DriftRecord[]", remoteResult(array(driftRecordSchema)))
+				},
+				{
+					id: "golem#golem/getKnowledgeRecords",
+					service: "golem",
+					namespace: "golem",
+					method: "getKnowledgeRecords",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "instanceId",
+						wire: "instanceId",
+						source: "json",
+						codec: strict("golem/types#InstanceId", string())
+					}],
+					result: strict("golem/types#LearnedFact[]", remoteResult(array(learnedFactSchema)))
 				}
 			]
 		};

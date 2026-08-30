@@ -50,6 +50,33 @@ export interface DriftExecutionResult {
 }
 
 /**
+ * 知识获取轨迹的一条记录（随机轨 / 目的轨各一次尝试的结果）。
+ * 与 golem 服务端 `src/knowledge/types.ts` 的 LearnedFact 保持一致；
+ * 客户端不引入服务端包，此类型须随服务端同步变更。
+ */
+export interface LearnedFact {
+  id: string
+  title: string
+  summary: string
+  source: string
+  sourceUrl: string
+  /** epoch ms when learned */
+  learnedAt: number
+  /** which rank was actually chosen */
+  chosenRank: number
+  /** human-readable why */
+  selectionPath: string
+  /** which slot produced this record */
+  kind: 'random' | 'purposeful'
+  /** outcome of the attempt */
+  status: 'learned' | 'empty' | 'junk' | 'error'
+  /** present only for purposeful records */
+  directive?: { source: string; query?: string; rationale: string }
+  /** status note (e.g. "检索返回 0 条" / "源异常: …") */
+  statusNote?: string
+}
+
+/**
  * `ctx.remote.golem` 的 typed 面（经 `@deepseek-ai/dsh-typert-protocol` 的
  * `TypertRemoteNamespaceMap` 合并声明）。每个方法返回 `RemoteResult<T>`：
  * `{ ok: true, value }` 或 `{ ok: false, error }`。
@@ -63,4 +90,5 @@ export interface GolemRemoteApi {
   setDefaultInstance(id: string): Promise<RemoteResult<null>>
   deleteInstance(id: string): Promise<RemoteResult<null>>
   getDriftRecords(instanceId: string): Promise<RemoteResult<DriftExecutionResult[]>>
+  getKnowledgeRecords(instanceId: string): Promise<RemoteResult<LearnedFact[]>>
 }

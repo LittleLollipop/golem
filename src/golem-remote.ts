@@ -22,8 +22,10 @@ import { GolemInstanceApi } from "./golem-instance-api.js";
 import { AxolotlClient } from "./memory/axolotl-client.js";
 import { InstanceRegistry } from "./registry/instance-registry.js";
 import { readDriftRecords } from "./agent/persona-drift.js";
+import { readKnowledgeRecords } from "./knowledge/ledger-read.js";
 import type { InstanceId, InstanceMeta } from "./types.js";
 import type { DriftExecutionResult } from "./agent/persona-drift.js";
+import type { LearnedFact } from "./knowledge/types.js";
 
 declare module "@deepseek-ai/cordis" {
   interface Context {
@@ -117,5 +119,21 @@ export class GolemRemoteService extends TypertRemoteService {
     return readDriftRecords(instanceId).then(ok, (error) =>
       fail("drift-read-failed", error instanceof Error ? error.message : String(error)),
     );
+  }
+
+  /**
+   * 读取某实例的全部知识获取轨迹（随机轨 + 目的轨）。文件不存在返回空数组。
+   * 数据来自 DailyKnowledgeTracker 写入的 `<knowledgeDir>/<inst>.json` 的 trajectory。
+   */
+  @Remote("getKnowledgeRecords")
+  async getKnowledgeRecords(instanceId: InstanceId): Promise<RemoteResult<LearnedFact[]>> {
+    try {
+      return ok(readKnowledgeRecords(instanceId));
+    } catch (error) {
+      return fail(
+        "knowledge-read-failed",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 }

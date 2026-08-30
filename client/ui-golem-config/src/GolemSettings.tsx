@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type CSSProperties } from 'react'
 import type { InstanceMeta } from './types.ts'
 import type { GolemApi } from './golem-api.ts'
 import { DriftDashboard } from './DriftDashboard.tsx'
+import { KnowledgeDashboard } from './KnowledgeDashboard.tsx'
 
 /**
  * dsh 设置面板里的「假人」section 内容。
@@ -60,8 +61,8 @@ export function GolemSettings({ api }: GolemSettingsProps) {
    * 现在改为受控 + state 草稿：值只从 React state 来，不依赖 DOM 结构/类名。
    */
   const [drafts, setDrafts] = useState<Record<string, string>>({})
-  /** 面板内标签页：实例配置 / 内省记录。 */
-  const [tab, setTab] = useState<'config' | 'drift'>('config')
+  /** 面板内标签页：实例配置 / 内省记录 / 知识记录。 */
+  const [tab, setTab] = useState<'config' | 'drift' | 'knowledge'>('config')
 
   const refresh = useCallback(async () => {
     setBusy(true)
@@ -136,10 +137,16 @@ export function GolemSettings({ api }: GolemSettingsProps) {
           style={tab === 'drift' ? button : buttonGhost}
           onClick={() => setTab('drift')}
         >内省记录</button>
+        <button
+          style={tab === 'knowledge' ? button : buttonGhost}
+          onClick={() => setTab('knowledge')}
+        >知识记录</button>
       </div>
 
       {tab === 'drift' ? (
         <DriftDashboard api={api} instances={metas} />
+      ) : tab === 'knowledge' ? (
+        <KnowledgeDashboard api={api} instances={metas} />
       ) : (
     <div style={card}>
         <div style={row}>

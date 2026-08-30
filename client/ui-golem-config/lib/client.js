@@ -27,7 +27,8 @@ window.__ModuleLoader__.load({
 				getDefaultInstance: () => remote.getDefaultInstance().then(unwrap),
 				setDefaultInstance: (id) => remote.setDefaultInstance(id).then(unwrap),
 				deleteInstance: (id) => remote.deleteInstance(id).then(unwrap),
-				getDriftRecords: (id) => remote.getDriftRecords(id).then(unwrap)
+				getDriftRecords: (id) => remote.getDriftRecords(id).then(unwrap),
+				getKnowledgeRecords: (id) => remote.getKnowledgeRecords(id).then(unwrap)
 			};
 		}
 		//#endregion
@@ -87,26 +88,26 @@ window.__ModuleLoader__.load({
 			playfulness: "俏皮度",
 			assertiveness: "主见度"
 		};
-		const card$1 = {
+		const card$2 = {
 			border: "1px solid #ddd",
 			borderRadius: 10,
 			padding: "14px 16px",
 			marginBottom: 14,
 			background: "var(--card, #fff)"
 		};
-		const row$1 = {
+		const row$2 = {
 			display: "flex",
 			gap: 10,
 			alignItems: "center",
 			flexWrap: "wrap"
 		};
-		const input$1 = {
+		const input$2 = {
 			font: "inherit",
 			padding: "6px 8px",
 			border: "1px solid #ccc",
 			borderRadius: 8
 		};
-		const button$1 = {
+		const button$2 = {
 			font: "inherit",
 			padding: "6px 12px",
 			border: "1px solid #2b6cb0",
@@ -115,12 +116,12 @@ window.__ModuleLoader__.load({
 			borderRadius: 8,
 			cursor: "pointer"
 		};
-		const meta$1 = {
+		const meta$2 = {
 			fontSize: 12,
 			color: "#999",
 			marginTop: 4
 		};
-		const hint$1 = {
+		const hint$2 = {
 			fontSize: 12,
 			color: "#c0392b",
 			minHeight: 16,
@@ -227,11 +228,11 @@ window.__ModuleLoader__.load({
 				style: { padding: 4 },
 				children: [
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						style: row$1,
+						style: row$2,
 						children: [
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
 								style: {
-									...input$1,
+									...input$2,
 									minWidth: 160
 								},
 								value: effective,
@@ -245,30 +246,30 @@ window.__ModuleLoader__.load({
 								}, m.id))
 							}),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-								style: button$1,
+								style: button$2,
 								onClick: () => void load(),
 								disabled: loading,
 								children: loading ? "刷新中…" : "刷新"
 							}),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-								style: meta$1,
+								style: meta$2,
 								children: "每 5 秒自动刷新（idle 内省后记录会自动出现）"
 							})
 						]
 					}),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-						style: hint$1,
+						style: hint$2,
 						children: err
 					}),
 					instances.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 						style: {
-							...meta$1,
+							...meta$2,
 							marginTop: 20
 						},
 						children: "暂无实例，先到「实例配置」新建假人。"
 					}) : total === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						style: {
-							...meta$1,
+							...meta$2,
 							marginTop: 20
 						},
 						children: [
@@ -292,13 +293,13 @@ window.__ModuleLoader__.load({
 							["失败", failed]
 						].map(([k, v]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							style: {
-								...card$1,
+								...card$2,
 								marginBottom: 0,
 								minWidth: 96,
 								padding: "10px 14px"
 							},
 							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								style: meta$1,
+								style: meta$2,
 								children: k
 							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 								style: {
@@ -309,7 +310,7 @@ window.__ModuleLoader__.load({
 							})]
 						}, k)), lastCum ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							style: {
-								...card$1,
+								...card$2,
 								marginBottom: 0,
 								flex: 1,
 								minWidth: 240,
@@ -317,7 +318,7 @@ window.__ModuleLoader__.load({
 							},
 							children: [
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-									style: meta$1,
+									style: meta$2,
 									children: "当前累计偏移"
 								}),
 								DIM_ORDER.filter((d) => lastCum[d]).map((d) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bar, {
@@ -337,12 +338,12 @@ window.__ModuleLoader__.load({
 							const borderColor = r.written ? "#2b8a5c" : r.error ? "#c0392b" : "#d29922";
 							return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 								style: {
-									...card$1,
+									...card$2,
 									borderLeft: `4px solid ${borderColor}`
 								},
 								children: [
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-										style: row$1,
+										style: row$2,
 										children: [
 											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 												style: { fontWeight: 600 },
@@ -360,7 +361,7 @@ window.__ModuleLoader__.load({
 											}),
 											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
 												style: {
-													...meta$1,
+													...meta$2,
 													marginLeft: "auto"
 												},
 												children: [
@@ -403,7 +404,7 @@ window.__ModuleLoader__.load({
 											marginTop: 10
 										},
 										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-											style: meta$1,
+											style: meta$2,
 											children: "输入"
 										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 											style: { fontSize: 13 },
@@ -419,7 +420,7 @@ window.__ModuleLoader__.load({
 												" 天"
 											]
 										})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-											style: meta$1,
+											style: meta$2,
 											children: "心境 / 倾向 / 执念"
 										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 											style: { fontSize: 13 },
@@ -444,7 +445,7 @@ window.__ModuleLoader__.load({
 											r.parsed.rationale ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 												style: { marginTop: 8 },
 												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-													style: meta$1,
+													style: meta$2,
 													children: "判断理由"
 												}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 													style: { fontSize: 13 },
@@ -504,6 +505,277 @@ window.__ModuleLoader__.load({
 											children: r.llmRaw
 										})]
 									}) : null
+								]
+							}, i);
+						})
+					})] })
+				]
+			});
+		}
+		//#endregion
+		//#region src/KnowledgeDashboard.tsx
+		const SRC_COLOR = {
+			News: "#2563eb",
+			"Hacker News": "#ea580c",
+			Wikipedia: "#16a34a",
+			web: "#7c3aed",
+			static: "#0891b2"
+		};
+		const STATUS_COLOR = {
+			learned: "#16a34a",
+			empty: "#9ca3af",
+			junk: "#d97706",
+			error: "#dc2626"
+		};
+		const card$1 = {
+			border: "1px solid #ddd",
+			borderRadius: 10,
+			padding: "14px 16px",
+			marginBottom: 14,
+			background: "var(--card, #fff)"
+		};
+		const row$1 = {
+			display: "flex",
+			gap: 10,
+			alignItems: "center",
+			flexWrap: "wrap"
+		};
+		const input$1 = {
+			font: "inherit",
+			padding: "6px 8px",
+			border: "1px solid #ccc",
+			borderRadius: 8
+		};
+		const button$1 = {
+			font: "inherit",
+			padding: "6px 12px",
+			border: "1px solid #2b6cb0",
+			background: "#2b6cb0",
+			color: "#fff",
+			borderRadius: 8,
+			cursor: "pointer"
+		};
+		const meta$1 = {
+			fontSize: 12,
+			color: "#999",
+			marginTop: 4
+		};
+		const hint$1 = {
+			fontSize: 12,
+			color: "#c0392b",
+			minHeight: 16,
+			marginTop: 6
+		};
+		function badge(text, color) {
+			return {
+				fontSize: 11,
+				padding: "2px 8px",
+				borderRadius: 20,
+				background: color + "26",
+				color
+			};
+		}
+		function KnowledgeDashboard({ api, instances }) {
+			const [selected, setSelected] = (0, react.useState)("");
+			const [records, setRecords] = (0, react.useState)([]);
+			const [loading, setLoading] = (0, react.useState)(false);
+			const [err, setErr] = (0, react.useState)("");
+			const [onlyPurposeful, setOnlyPurposeful] = (0, react.useState)(false);
+			const timer = (0, react.useRef)(null);
+			const effective = selected || instances[0]?.id || "";
+			const load = (0, react.useCallback)(async () => {
+				if (!effective) return;
+				setLoading(true);
+				try {
+					setRecords(await api.getKnowledgeRecords(effective));
+					setErr("");
+				} catch (e) {
+					setErr("加载失败: " + String(e));
+				} finally {
+					setLoading(false);
+				}
+			}, [api, effective]);
+			(0, react.useEffect)(() => {
+				load();
+				if (timer.current) clearInterval(timer.current);
+				timer.current = setInterval(() => void load(), 5e3);
+				return () => {
+					if (timer.current) clearInterval(timer.current);
+				};
+			}, [load]);
+			const view = onlyPurposeful ? records.filter((r) => r.kind === "purposeful") : records;
+			const learned = records.filter((r) => r.status === "learned").length;
+			const empty = records.filter((r) => r.status === "empty").length;
+			const junkErr = records.filter((r) => r.status === "junk" || r.status === "error").length;
+			const newsSocial = records.filter((r) => r.kind === "purposeful" && (r.source === "News" || r.source === "Hacker News") && r.status === "learned").length;
+			return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				style: { padding: 4 },
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						style: row$1,
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+								style: {
+									...input$1,
+									minWidth: 160
+								},
+								value: effective,
+								onChange: (e) => setSelected(e.target.value),
+								children: instances.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "",
+									children: "（无实例）"
+								}) : instances.map((m) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: m.id,
+									children: m.name || m.id
+								}, m.id))
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								style: button$1,
+								onClick: () => void load(),
+								disabled: loading,
+								children: loading ? "刷新中…" : "刷新"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+								style: {
+									...meta$1,
+									display: "flex",
+									alignItems: "center",
+									gap: 4,
+									cursor: "pointer"
+								},
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+									type: "checkbox",
+									checked: onlyPurposeful,
+									onChange: (e) => setOnlyPurposeful(e.target.checked),
+									style: { margin: 0 }
+								}), "只看目的轨"]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								style: meta$1,
+								children: "每 5 秒自动刷新（idle 学习后记录会自动出现）"
+							})
+						]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						style: hint$1,
+						children: err
+					}),
+					instances.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						style: {
+							...meta$1,
+							marginTop: 20
+						},
+						children: "暂无实例，先到「实例配置」新建假人。"
+					}) : records.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						style: {
+							...meta$1,
+							marginTop: 20
+						},
+						children: [
+							"实例「",
+							effective,
+							"」还没有知识获取记录。去 dsh 聊天界面开聊几轮，然后",
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "停手空闲几秒" }),
+							"触发 idle 学习，记录会自动出现在这里。"
+						]
+					}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						style: {
+							display: "flex",
+							gap: 12,
+							flexWrap: "wrap",
+							marginTop: 12
+						},
+						children: [
+							["总记录", records.length],
+							["已学成", learned],
+							["新闻+社交", newsSocial],
+							["空/垃圾/失败", empty + junkErr]
+						].map(([k, v]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							style: {
+								...card$1,
+								marginBottom: 0,
+								minWidth: 96,
+								padding: "10px 14px"
+							},
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								style: meta$1,
+								children: k
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								style: {
+									fontSize: 22,
+									fontWeight: 600
+								},
+								children: v
+							})]
+						}, k))
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						style: { marginTop: 18 },
+						children: view.slice().reverse().map((r, i) => {
+							const sc = SRC_COLOR[r.source] || "#64748b";
+							const stc = STATUS_COLOR[r.status] || "#64748b";
+							return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								style: {
+									...card$1,
+									borderLeft: `4px solid ${stc}`
+								},
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										style: row$1,
+										children: [
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												style: badge(r.source, sc),
+												children: r.source
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												style: badge(r.status, stc),
+												children: r.status
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+												style: {
+													...meta$1,
+													marginLeft: "auto"
+												},
+												children: [r.kind === "purposeful" ? "目的轨" : "随机轨", r.learnedAt ? " · " + new Date(r.learnedAt).toLocaleString("zh-CN") : ""]
+											})
+										]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										style: {
+											marginTop: 8,
+											fontSize: 14,
+											fontWeight: 600
+										},
+										children: r.sourceUrl ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", {
+											href: r.sourceUrl,
+											target: "_blank",
+											rel: "noopener",
+											style: {
+												color: "#1a1a1a",
+												textDecoration: "none"
+											},
+											children: r.title || "(无标题)"
+										}) : r.title || "(无标题)"
+									}),
+									r.summary ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										style: {
+											marginTop: 6,
+											fontSize: 13,
+											color: "#555",
+											lineHeight: 1.5
+										},
+										children: r.summary
+									}) : null,
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										style: {
+											...meta$1,
+											marginTop: 6
+										},
+										children: [
+											r.selectionPath,
+											r.directive?.rationale ? " · 规划理由: " + r.directive.rationale : "",
+											r.statusNote ? " · " + r.statusNote : ""
+										]
+									})
 								]
 							}, i);
 						})
@@ -604,7 +876,7 @@ window.__ModuleLoader__.load({
 			* 现在改为受控 + state 草稿：值只从 React state 来，不依赖 DOM 结构/类名。
 			*/
 			const [drafts, setDrafts] = (0, react.useState)({});
-			/** 面板内标签页：实例配置 / 内省记录。 */
+			/** 面板内标签页：实例配置 / 内省记录 / 知识记录。 */
 			const [tab, setTab] = (0, react.useState)("config");
 			const refresh = (0, react.useCallback)(async () => {
 				setBusy(true);
@@ -692,16 +964,27 @@ window.__ModuleLoader__.load({
 						...row,
 						marginBottom: 14
 					},
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-						style: tab === "config" ? button : buttonGhost,
-						onClick: () => setTab("config"),
-						children: "实例配置"
-					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-						style: tab === "drift" ? button : buttonGhost,
-						onClick: () => setTab("drift"),
-						children: "内省记录"
-					})]
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							style: tab === "config" ? button : buttonGhost,
+							onClick: () => setTab("config"),
+							children: "实例配置"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							style: tab === "drift" ? button : buttonGhost,
+							onClick: () => setTab("drift"),
+							children: "内省记录"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							style: tab === "knowledge" ? button : buttonGhost,
+							onClick: () => setTab("knowledge"),
+							children: "知识记录"
+						})
+					]
 				}), tab === "drift" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DriftDashboard, {
+					api,
+					instances: metas
+				}) : tab === "knowledge" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(KnowledgeDashboard, {
 					api,
 					instances: metas
 				}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {

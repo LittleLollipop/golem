@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 400" font-family="-apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="arrowGray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#8a8a8a"/>
+    </marker>
+    <marker id="arrowC" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#c0392b"/>
+    </marker>
+    <marker id="arrowT" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#2471a3"/>
+    </marker>
+    <marker id="arrowS" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#1e8449"/>
+    </marker>
+  </defs>
+
+  <!-- background -->
+  <rect x="0" y="0" width="680" height="400" fill="#fbfbfd"/>
+
+  <!-- title -->
+  <text x="340" y="30" text-anchor="middle" font-size="17" font-weight="700" fill="#222">分层记忆 vs 图记忆：拓扑对照</text>
+
+  <!-- ============ LEFT PANEL: Tiered ============ -->
+  <rect x="22" y="50" width="296" height="320" rx="10" fill="#f3f4f6" stroke="#d0d3d8"/>
+  <text x="170" y="74" text-anchor="middle" font-size="13.5" font-weight="700" fill="#444">分层记忆（固定深度 DAG）</text>
+
+  <!-- layers: L3 top -> L0 bottom -->
+  <rect x="95" y="92"  width="150" height="40" rx="7" fill="#e8eaf0" stroke="#9aa0ab"/>
+  <text x="170" y="116" text-anchor="middle" font-size="12.5" fill="#333">L3 长期仓（全局）</text>
+  <rect x="95" y="148" width="150" height="40" rx="7" fill="#e8eaf0" stroke="#9aa0ab"/>
+  <text x="170" y="172" text-anchor="middle" font-size="12.5" fill="#333">L2 中期摘要</text>
+  <rect x="95" y="204" width="150" height="40" rx="7" fill="#e8eaf0" stroke="#9aa0ab"/>
+  <text x="170" y="228" text-anchor="middle" font-size="12.5" fill="#333">L1 近期缓冲</text>
+  <rect x="95" y="260" width="150" height="40" rx="7" fill="#e8eaf0" stroke="#9aa0ab"/>
+  <text x="170" y="284" text-anchor="middle" font-size="12.5" fill="#333">L0 工作集</text>
+
+  <!-- only vertical homogeneous arrows between layers -->
+  <line x1="170" y1="132" x2="170" y2="148" stroke="#8a8a8a" stroke-width="2" marker-end="url(#arrowGray)"/>
+  <line x1="170" y1="188" x2="170" y2="204" stroke="#8a8a8a" stroke-width="2" marker-end="url(#arrowGray)"/>
+  <line x1="170" y1="244" x2="170" y2="260" stroke="#8a8a8a" stroke-width="2" marker-end="url(#arrowGray)"/>
+
+  <text x="170" y="328" text-anchor="middle" font-size="11.5" fill="#777">链路数 = L−1（小常数）</text>
+  <text x="170" y="346" text-anchor="middle" font-size="11.5" fill="#777">边同质：仅"晋升/检索"</text>
+  <text x="170" y="364" text-anchor="middle" font-size="11.5" fill="#a93226">关系结构经摘要漏斗坍缩</text>
+
+  <!-- ============ RIGHT PANEL: Graph ============ -->
+  <rect x="362" y="50" width="296" height="320" rx="10" fill="#f3f7f4" stroke="#c3d8cb"/>
+  <text x="510" y="74" text-anchor="middle" font-size="13.5" font-weight="700" fill="#3a5a45">图记忆（生长拓扑）</text>
+
+  <!-- anchor node (highlight) -->
+  <circle cx="510" cy="200" r="26" fill="#fdebd0" stroke="#d68910" stroke-width="2"/>
+  <text x="510" y="196" text-anchor="middle" font-size="11" font-weight="700" fill="#7e5109">核心</text>
+  <text x="510" y="210" text-anchor="middle" font-size="11" font-weight="700" fill="#7e5109">需求</text>
+
+  <!-- surrounding nodes -->
+  <circle cx="408" cy="112" r="20" fill="#eaf2f8" stroke="#2471a3"/>
+  <text x="408" y="116" text-anchor="middle" font-size="10.5" fill="#1b4f72">事实A</text>
+
+  <circle cx="612" cy="120" r="20" fill="#eaf2f8" stroke="#2471a3"/>
+  <text x="612" y="124" text-anchor="middle" font-size="10.5" fill="#1b4f72">事实B</text>
+
+  <circle cx="392" cy="300" r="20" fill="#e8f6ef" stroke="#1e8449"/>
+  <text x="392" y="304" text-anchor="middle" font-size="10.5" fill="#145a32">来源C</text>
+
+  <circle cx="624" cy="292" r="20" fill="#fdedec" stroke="#c0392b"/>
+  <text x="624" y="296" text-anchor="middle" font-size="10.5" fill="#922b21">因果D</text>
+
+  <!-- typed edges -->
+  <!-- temporal (anchor -> A) blue -->
+  <line x1="498" y1="180" x2="420" y2="128" stroke="#2471a3" stroke-width="2" marker-end="url(#arrowT)"/>
+  <line x1="522" y1="180" x2="602" y2="134" stroke="#2471a3" stroke-width="2" marker-end="url(#arrowT)"/>
+  <!-- source (anchor -> C) green -->
+  <line x1="492" y1="218" x2="404" y2="284" stroke="#1e8449" stroke-width="2" marker-end="url(#arrowS)"/>
+  <!-- causal (anchor -> D) red -->
+  <line x1="528" y1="218" x2="616" y2="276" stroke="#c0392b" stroke-width="2" marker-end="url(#arrowC)"/>
+  <!-- cross edge between A and B (distant relation survives) -->
+  <line x1="430" y1="112" x2="590" y2="120" stroke="#b08d57" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrowGray)"/>
+
+  <text x="510" y="338" text-anchor="middle" font-size="11.5" fill="#777">拓扑随内容生长，路径数不预设</text>
+  <text x="510" y="356" text-anchor="middle" font-size="11.5" fill="#777">typed 边：causal / temporal / source</text>
+  <text x="510" y="374" text-anchor="middle" font-size="11.5" fill="#1e8449">关系结构显式常驻，可多跳缝合</text>
+
+  <!-- legend -->
+  <line x1="30" y1="388" x2="48" y2="388" stroke="#2471a3" stroke-width="2" marker-end="url(#arrowT)"/>
+  <text x="52" y="392" font-size="10.5" fill="#555">temporal</text>
+  <line x1="120" y1="388" x2="138" y2="388" stroke="#1e8449" stroke-width="2" marker-end="url(#arrowS)"/>
+  <text x="142" y="392" font-size="10.5" fill="#555">source</text>
+  <line x1="200" y1="388" x2="218" y2="388" stroke="#c0392b" stroke-width="2" marker-end="url(#arrowC)"/>
+  <text x="222" y="392" font-size="10.5" fill="#555">causal</text>
+</svg>
