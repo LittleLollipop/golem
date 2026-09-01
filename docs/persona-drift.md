@@ -166,6 +166,10 @@ base persona（锚 · 用户设定 · 永久不变）
 
 维度集合（初始 5 个，可扩展）：`openness` / `warmth` / `verbosity` / `playfulness` / `assertiveness`。
 
+> ⚠️ **v1 维度集合已被取代**。2026-09-01 实测（3 条真实记录 delta 近乎恒定，累积 7 天后将撞满 ±1.0）已推动维度重构，新方案见
+> **`docs/persona-drift-dimensions.md`**（三层人格坐标系：Trait 基线层 / State 漂移层 / 表现层 + 重力回弹）。
+> 本文档 §5 的维度清单与 §7 的护栏在 v2 落地后以新文档为准；机制部分（触发、演进链、持久化、注入）不变。
+
 ---
 
 ## 6. 输入：近期记忆与对话
