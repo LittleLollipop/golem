@@ -5,6 +5,28 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+三层人格坐标系重构（性格漂移维度 + 重力回弹），方案见 `docs/persona-drift-dimensions.md`。
+
+⚠️ **破坏性变更**：`FAKEREN_DRIFT_DIMS` 默认值从旧五维
+`openness,warmth,verbosity,playfulness,assertiveness` 换成
+`extraversion,agreeableness,openness,emotionality,verbosity,playfulness`。
+已有的 v1 drift 节点不删除、但**不再参与累积计算**（靠 drift 节点的
+`schemaVersion: 2` 过滤，旧节点无此字段）——累积偏移归零重启。
+
+### Added
+- **Trait 层人格坐标**（`TraitBaseline`）：HEXACO 六维（H/E/X/A/C/O）静态坐标，每假人标一次；兼作每日漂移的**重力中心**（回弹目标）。可用 LLM 从核心人设推断（新增 `inferTraitBaseline` remote），也可在设置面板拖六滑块。
+- **重力回弹**（`revertPull`）：软带（0.4）内弱回弹，超出后系数按偏离量放大 → 即使模型天天给满增量，累积也稳定在基线 ±0.5 附近，不再单调撞边界。回弹目标与回弹量写入 drift 节点 `props.traitTarget` / `props.revertPull`，可审计。
+- **per-dim 单日上限**（`FAKEREN_DRIFT_DIM_CAPS`）：`emotionality` 默认收紧到 0.08（其它维 0.15），避免"今天心情不好"被记成"性格变敏感了"。
+- **维度定义下发**（`getDriftDims` remote）：前端不再硬编码维度名与中文标签，后端为单一真源。
+- **人格坐标面板**：内省记录页新增 HEXACO 六维坐标条（灰点=基线 / 彩条=当前偏移）。H、C 两维**灰显**并注明"仅作人格坐标，不参与每日漂移"——它们在闲聊文本中不可观测，强行打分只会变噪声。
+
+### Fixed
+- **evidence 悬空边**（实测缺陷）：提示词要求节点 id 却没把 id 喂给模型 → 模型只能编，导致 `relates` 边 100% 指向不存在的节点，而 UI 上"evidence 边 N"的计数却在涨（追溯能力实际为 0）。修复：对话/记忆上下文带上 `[节点 id]`、evidence 改为 `{nodeId, quote}` 结构、**建边前校验节点存在**，悬空的记 `evidenceSkipped` 而不建边。
+- **提示词系统性正向偏置**：实测 08-31 与 09-01 的 dims 向量逐字节相同、累积单调不回头（playfulness 7 天撞满 ±1.0）。修复：把各维度"当前已偏离基线的量"喂给模型，并明确要求无新证据时输出 0、性格不会每天都变；同时切割 `mood`（今日心境）与 `emotionality`（情绪底色）。
+- **维度共线**：为六个维度给出互斥的操作定义并写进提示词（extraversion 测"主不主动"、verbosity 测"说了多少字"），避免同一信号被计两遍。
+
 ## [0.4.1] - 2026-08-30
 
 知识记录可视化、图数据库选型论述，以及 README 文档完善（含「小静」渲染版合并）。

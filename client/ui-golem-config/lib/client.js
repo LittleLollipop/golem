@@ -28,7 +28,9 @@ window.__ModuleLoader__.load({
 				setDefaultInstance: (id) => remote.setDefaultInstance(id).then(unwrap),
 				deleteInstance: (id) => remote.deleteInstance(id).then(unwrap),
 				getDriftRecords: (id) => remote.getDriftRecords(id).then(unwrap),
-				getKnowledgeRecords: (id) => remote.getKnowledgeRecords(id).then(unwrap)
+				getKnowledgeRecords: (id) => remote.getKnowledgeRecords(id).then(unwrap),
+				getDriftDims: () => remote.getDriftDims().then(unwrap),
+				inferTraitBaseline: (id) => remote.inferTraitBaseline(id).then(unwrap)
 			};
 		}
 		//#endregion
@@ -74,20 +76,6 @@ window.__ModuleLoader__.load({
 		var import_jsx_runtime = (/* @__PURE__ */ __commonJSMin(((exports, module) => {
 			module.exports = require_react_jsx_runtime_production_min();
 		})))();
-		const DIM_ORDER = [
-			"openness",
-			"warmth",
-			"verbosity",
-			"playfulness",
-			"assertiveness"
-		];
-		const DIM_LABELS = {
-			openness: "开放性",
-			warmth: "亲和力",
-			verbosity: "表达欲",
-			playfulness: "俏皮度",
-			assertiveness: "主见度"
-		};
 		const card$2 = {
 			border: "1px solid #ddd",
 			borderRadius: 10,
@@ -127,6 +115,14 @@ window.__ModuleLoader__.load({
 			minHeight: 16,
 			marginTop: 6
 		};
+		/** 数值 → 轨道百分比位置（-1..1 → 0..100）。 */
+		function pct(v) {
+			return 50 + Math.max(-1, Math.min(1, v)) * 50;
+		}
+		/**
+		* 单值条（-1..1，中心为 0）。用于每日 delta 与累计偏移。
+		* `name` 缺省时回退显示 key（维度定义未加载完的降级渲染，不崩）。
+		*/
 		function Bar({ name, v }) {
 			const mag = Math.max(-1, Math.min(1, v));
 			const pos = mag >= 0;
@@ -135,7 +131,7 @@ window.__ModuleLoader__.load({
 				top: 0,
 				bottom: 0,
 				background: pos ? "#2b8a5c" : "#c0392b",
-				left: pos ? "50%" : `${50 + mag * 50}%`,
+				left: pos ? "50%" : `${pct(mag)}%`,
 				width: `${Math.abs(mag) * 50}%`
 			};
 			return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
@@ -152,7 +148,7 @@ window.__ModuleLoader__.load({
 							flex: "none",
 							fontSize: 13
 						},
-						children: DIM_LABELS[name] || name
+						children: name || "—"
 					}),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						style: {
@@ -186,6 +182,136 @@ window.__ModuleLoader__.load({
 				]
 			});
 		}
+		/**
+		* 人格坐标条：灰点 = trait 基线（重力中心），彩条 = 从基线延伸到当前累积。
+		*
+		* `inert`（不参与每日漂移的 H / C 两维）整行灰显（Q3 裁定：露出来，但明确
+		* 标注"仅作人格坐标"）——它们在闲聊文本中不可观测，强行每日打分只会变成噪声
+		* （docs/persona-drift-dimensions.md §4.1）。
+		*/
+		function TraitBar({ label, hint: tip, base, cum, inert }) {
+			const hasCum = cum != null;
+			const end = hasCum ? cum : base;
+			const left = pct(Math.min(base, end));
+			const width = Math.abs(pct(end) - pct(base));
+			return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				style: {
+					margin: "7px 0",
+					opacity: inert ? .55 : 1
+				},
+				title: tip,
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					style: {
+						display: "flex",
+						alignItems: "center",
+						gap: 10
+					},
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							style: {
+								width: 64,
+								flex: "none",
+								fontSize: 13
+							},
+							children: [label, inert ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								style: {
+									fontSize: 10,
+									color: "#999",
+									marginLeft: 4
+								},
+								children: "灰"
+							}) : null]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							style: {
+								position: "relative",
+								flex: 1,
+								height: 14,
+								background: "#eee",
+								border: "1px solid #ddd",
+								borderRadius: 7,
+								overflow: "visible"
+							},
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+									position: "absolute",
+									left: "50%",
+									top: 0,
+									bottom: 0,
+									width: 1,
+									background: "#ccc"
+								} }),
+								hasCum ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+									position: "absolute",
+									top: 3,
+									bottom: 3,
+									left: `${left}%`,
+									width: `${width}%`,
+									background: end >= base ? "#2b8a5c" : "#c0392b",
+									borderRadius: 4,
+									opacity: .75
+								} }) : null,
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+									position: "absolute",
+									top: "50%",
+									left: `${pct(base)}%`,
+									width: 9,
+									height: 9,
+									marginLeft: -4.5,
+									marginTop: -4.5,
+									borderRadius: "50%",
+									background: "#666",
+									border: "1px solid #fff"
+								} })
+							]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							style: {
+								width: 96,
+								flex: "none",
+								textAlign: "right",
+								fontSize: 12,
+								color: "#999"
+							},
+							children: inert ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "仅作人格坐标" }) : hasCum ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+								"基线 ",
+								base >= 0 ? "+" : "",
+								base.toFixed(2),
+								" · 当前 ",
+								cum >= 0 ? "+" : "",
+								cum.toFixed(2)
+							] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+								"基线 ",
+								base >= 0 ? "+" : "",
+								base.toFixed(2)
+							] })
+						})
+					]
+				}), inert ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					style: {
+						fontSize: 10,
+						color: "#aaa",
+						marginLeft: 74
+					},
+					children: "仅作人格坐标，不参与每日漂移"
+				}) : null]
+			});
+		}
+		/** Trait 键 → 对应的 State 漂移维度键（H / C 无对应，故不在此表）。 */
+		const TRAIT_TO_STATE = {
+			E: "emotionality",
+			X: "extraversion",
+			A: "agreeableness",
+			O: "openness"
+		};
+		/** 表现层维度在 HEXACO 中无对应轴，回弹目标用代理映射（§5.3）。 */
+		function proxyTarget(key, t) {
+			switch (key) {
+				case "verbosity": return t.X;
+				case "playfulness": return (t.X + t.O) / 2;
+				default: return 0;
+			}
+		}
 		const SKIP_TEXT = {
 			"already-done": (r) => `今日已完成内省（节点 ${r.existingNodeId ?? "?"} 已存在）`,
 			"no-dialogue": () => "近期无对话 → 跳过（链断档）",
@@ -195,10 +321,23 @@ window.__ModuleLoader__.load({
 		function DriftDashboard({ api, instances }) {
 			const [selected, setSelected] = (0, react.useState)("");
 			const [records, setRecords] = (0, react.useState)([]);
+			const [dims, setDims] = (0, react.useState)(null);
 			const [loading, setLoading] = (0, react.useState)(false);
 			const [err, setErr] = (0, react.useState)("");
 			const timer = (0, react.useRef)(null);
 			const effective = selected || instances[0]?.id || "";
+			const selectedMeta = instances.find((m) => m.id === effective);
+			(0, react.useEffect)(() => {
+				let alive = true;
+				api.getDriftDims().then((d) => {
+					if (alive) setDims(d);
+				}).catch((e) => {
+					if (alive) setErr("维度定义加载失败: " + String(e));
+				});
+				return () => {
+					alive = false;
+				};
+			}, [api]);
 			const load = (0, react.useCallback)(async () => {
 				if (!effective) return;
 				setLoading(true);
@@ -219,11 +358,14 @@ window.__ModuleLoader__.load({
 					if (timer.current) clearInterval(timer.current);
 				};
 			}, [load]);
+			const dimOrder = dims?.drift.map((d) => d.key) ?? [];
+			const dimName = (k) => dims?.drift.find((d) => d.key === k)?.label ?? k;
 			const total = records.length;
 			const done = records.filter((r) => r.written).length;
 			const skipped = records.filter((r) => !r.written && !r.error).length;
 			const failed = records.filter((r) => r.error).length;
 			const lastCum = [...records].reverse().find((r) => r.parsed?.cumulative)?.parsed?.cumulative;
+			const trait = selectedMeta?.traitBaseline;
 			return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				style: { padding: 4 },
 				children: [
@@ -261,6 +403,53 @@ window.__ModuleLoader__.load({
 						style: hint$2,
 						children: err
 					}),
+					dims ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						style: {
+							...card$2,
+							marginTop: 12
+						},
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								style: {
+									fontWeight: 600,
+									marginBottom: 2
+								},
+								children: "人格坐标"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								style: meta$2,
+								children: "灰点 = HEXACO 人格基线（漂移的重力中心）；彩条 = 当前累积相对基线的偏移。 灰显的两维在闲聊中不可观测，只作人格画像、不参与每日漂移。"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								style: { marginTop: 10 },
+								children: dims.trait.map((t) => {
+									const stateKey = TRAIT_TO_STATE[t.key];
+									const cum = stateKey && lastCum ? lastCum[stateKey] : void 0;
+									return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TraitBar, {
+										label: t.label,
+										hint: t.hint,
+										base: trait ? trait[t.key] : 0,
+										cum,
+										inert: !t.drifts
+									}, t.key);
+								})
+							}),
+							dims.drift.filter((d) => d.layer === "expression").map((d) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TraitBar, {
+								label: d.label,
+								hint: d.scope + "；" + d.notScope,
+								base: trait ? proxyTarget(d.key, trait) : 0,
+								cum: lastCum?.[d.key],
+								inert: false
+							}, d.key)),
+							trait ? null : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								style: {
+									...meta$2,
+									color: "#b8860b"
+								},
+								children: "该实例尚未标注人格基线 → 回弹目标暂按 0 处理。可到「实例配置」标六维或点「从人设自动推断」。"
+							})
+						]
+					}) : null,
 					instances.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 						style: {
 							...meta$2,
@@ -321,12 +510,12 @@ window.__ModuleLoader__.load({
 									style: meta$2,
 									children: "当前累计偏移"
 								}),
-								DIM_ORDER.filter((d) => lastCum[d]).map((d) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bar, {
-									name: d,
+								dimOrder.filter((d) => lastCum[d]).map((d) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bar, {
+									name: dimName(d),
 									v: lastCum[d]
 								}, d)),
-								Object.keys(lastCum).filter((d) => !DIM_ORDER.includes(d)).map((d) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bar, {
-									name: d,
+								Object.keys(lastCum).filter((d) => !dimOrder.includes(d)).map((d) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bar, {
+									name: dimName(d),
 									v: lastCum[d]
 								}, d))
 							]
@@ -434,14 +623,39 @@ window.__ModuleLoader__.load({
 									r.parsed ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 										style: { marginTop: 10 },
 										children: [
-											DIM_ORDER.filter((d) => r.parsed.dims[d] != null).map((d) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bar, {
-												name: d,
+											dimOrder.filter((d) => r.parsed.dims[d] != null).map((d) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bar, {
+												name: dimName(d),
 												v: r.parsed.dims[d]
 											}, d)),
-											Object.keys(r.parsed.dims).filter((d) => !DIM_ORDER.includes(d)).map((d) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bar, {
-												name: d,
+											Object.keys(r.parsed.dims).filter((d) => !dimOrder.includes(d)).map((d) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bar, {
+												name: dimName(d),
 												v: r.parsed.dims[d]
 											}, d)),
+											r.parsed.revertPull && Object.keys(r.parsed.revertPull).length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("details", {
+												style: { marginTop: 6 },
+												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("summary", {
+													style: {
+														cursor: "pointer",
+														color: "#2b6cb0",
+														fontSize: 12
+													},
+													children: "重力回弹（trait 目标 / 回弹量）"
+												}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+													style: {
+														fontSize: 12,
+														color: "#777",
+														marginTop: 6,
+														fontFamily: "ui-monospace, monospace"
+													},
+													children: Object.keys(r.parsed.revertPull).map((k) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+														dimName(k),
+														"：目标 ",
+														r.parsed.traitTarget?.[k]?.toFixed(2) ?? "0.00",
+														" · 回弹 ",
+														r.parsed.revertPull[k].toFixed(4)
+													] }, k))
+												})]
+											}) : null,
 											r.parsed.rationale ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 												style: { marginTop: 8 },
 												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
@@ -452,14 +666,36 @@ window.__ModuleLoader__.load({
 													children: r.parsed.rationale
 												})]
 											}) : null,
-											r.parsed.evidence?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("ul", {
-												style: {
-													margin: "8px 0 0",
-													paddingLeft: 18,
-													color: "#999",
-													fontSize: 12
-												},
-												children: r.parsed.evidence.map((e, j) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: e }, j))
+											r.parsed.evidence?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+												style: { marginTop: 8 },
+												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+													style: meta$2,
+													children: "证据引用"
+												}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("ul", {
+													style: {
+														margin: "4px 0 0",
+														paddingLeft: 18,
+														color: "#999",
+														fontSize: 12
+													},
+													children: r.parsed.evidence.map((e, j) => {
+														const ref = r.parsed.evidenceRefs?.[j];
+														return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
+															ref?.nodeId ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+																style: {
+																	color: "#2b8a5c",
+																	fontFamily: "ui-monospace, monospace"
+																},
+																children: ref.nodeId
+															}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+																style: { color: "#b8860b" },
+																children: "（悬空）"
+															}),
+															" ",
+															e
+														] }, j);
+													})
+												})]
 											}) : null
 										]
 									}) : null,
@@ -476,6 +712,10 @@ window.__ModuleLoader__.load({
 											r.written.causalEdges,
 											" · evidence 边 ",
 											r.written.evidenceEdges,
+											r.written.evidenceSkipped > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+												style: { color: "#b8860b" },
+												children: [" · 悬空 ", r.written.evidenceSkipped]
+											}) : null,
 											"）"
 										]
 									}) : null,
@@ -867,6 +1107,68 @@ window.__ModuleLoader__.load({
 		* GolemSettings 子树卸载 → 点开「内省记录」即全白。此边界让崩溃被收敛到内容区、
 		* 且提供「重试」按钮，而非白屏。
 		*/
+		/**
+		* HEXACO 六维人格坐标滑块（docs/persona-drift-dimensions.md §9.3）。
+		*
+		* 这是 Trait 层：每假人标一次、静态，兼作每日漂移的**重力中心**（回弹目标）。
+		* `drifts: false` 的两维（H 诚实-谦逊 / C 尽责性）灰显并注明"不参与每日漂移"——
+		* 它们在闲聊文本里不可观测，强行打分只会变噪声（§4.1）。Q3 裁定：露出来，
+		* 但要说清楚它不参与漂移，否则用户会以为坐标残缺。
+		*/
+		function TraitSliders({ defs, value, onChange }) {
+			return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				style: { marginTop: 6 },
+				children: [defs.map((d) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					style: {
+						display: "flex",
+						alignItems: "center",
+						gap: 10,
+						margin: "5px 0",
+						opacity: d.drifts ? 1 : .55
+					},
+					title: d.hint,
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							style: {
+								width: 72,
+								flex: "none",
+								fontSize: 13
+							},
+							children: d.label
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+							type: "range",
+							min: -100,
+							max: 100,
+							step: 5,
+							value: Math.round((value[d.key] ?? 0) * 100),
+							onChange: (e) => onChange({
+								...value,
+								[d.key]: Number(e.target.value) / 100
+							}),
+							style: { flex: 1 }
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							style: {
+								width: 96,
+								flex: "none",
+								textAlign: "right",
+								fontSize: 12,
+								color: "#999"
+							},
+							children: [(value[d.key] ?? 0) >= 0 ? "+" : "", (value[d.key] ?? 0).toFixed(2)]
+						})
+					]
+				}, d.key)), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					style: {
+						fontSize: 11,
+						color: "#aaa",
+						marginTop: 4
+					},
+					children: "灰显维度不参与每日漂移（闲聊中不可观测），仅作人格坐标与回弹参考。"
+				})]
+			});
+		}
 		var TabErrorBoundary = class extends react.Component {
 			state = { error: null };
 			static getDerivedStateFromError(error) {
@@ -927,6 +1229,10 @@ window.__ModuleLoader__.load({
 			* 现在改为受控 + state 草稿：值只从 React state 来，不依赖 DOM 结构/类名。
 			*/
 			const [drafts, setDrafts] = (0, react.useState)({});
+			/** HEXACO 六维定义的草稿（受控）。key = instanceId。 */
+			const [traitDrafts, setTraitDrafts] = (0, react.useState)({});
+			/** HEXACO 六维定义（后端下发，避免前端硬编码维度名）。 */
+			const [traitDefs, setTraitDefs] = (0, react.useState)([]);
 			/** 面板内标签页：实例配置 / 内省记录 / 知识记录。 */
 			const [tab, setTab] = (0, react.useState)("config");
 			const refresh = (0, react.useCallback)(async () => {
@@ -939,6 +1245,14 @@ window.__ModuleLoader__.load({
 						core: m.personaCore ?? m.persona ?? "",
 						ext: m.personaExt ?? ""
 					}])));
+					setTraitDrafts(Object.fromEntries(list.map((m) => [m.id, m.traitBaseline ?? {
+						H: 0,
+						E: 0,
+						X: 0,
+						A: 0,
+						C: 0,
+						O: 0
+					}])));
 				} catch (e) {
 					console.error("[GolemSettings] refresh failed:", e);
 					setCreateHint("加载失败: " + String(e));
@@ -949,6 +1263,15 @@ window.__ModuleLoader__.load({
 			(0, react.useEffect)(() => {
 				refresh();
 			}, [refresh]);
+			(0, react.useEffect)(() => {
+				let alive = true;
+				api.getDriftDims().then((d) => {
+					if (alive) setTraitDefs(d.trait);
+				}).catch((e) => console.error("[GolemSettings] getDriftDims failed:", e));
+				return () => {
+					alive = false;
+				};
+			}, [api]);
 			const onCreate = async () => {
 				const id = newId.trim();
 				if (!id) {
@@ -965,24 +1288,53 @@ window.__ModuleLoader__.load({
 					setCreateHint("失败: " + String(e));
 				}
 			};
-			const onSave = async (id, core, ext) => {
+			const onSave = async (id, core, ext, trait) => {
 				try {
 					const updated = await api.setInstanceMeta(id, {
 						personaCore: core,
-						personaExt: ext
+						personaExt: ext,
+						traitBaseline: trait
 					});
 					const echoedCore = updated.personaCore ?? "";
 					const echoedExt = updated.personaExt ?? "";
-					const ok = echoedCore === core && echoedExt === ext;
+					const echoedTrait = JSON.stringify(updated.traitBaseline ?? null);
+					const ok = echoedCore === core && echoedExt === ext && echoedTrait === JSON.stringify(trait);
 					setHints((h) => ({
 						...h,
-						[id]: ok ? core.trim() || ext.trim() ? "已保存（核心 " + core.length + " 字 / 扩展 " + ext.length + " 字）" : "已保存（已清空人格）" : "⚠ 保存未生效：服务端回读与提交不一致"
+						[id]: ok ? core.trim() || ext.trim() ? "已保存（核心 " + core.length + " 字 / 扩展 " + ext.length + " 字 / 六维坐标）" : "已保存（已清空人格）" : "⚠ 保存未生效：服务端回读与提交不一致"
 					}));
 					await refresh();
 				} catch (e) {
 					setHints((h) => ({
 						...h,
 						[id]: "失败: " + String(e)
+					}));
+				}
+			};
+			/** 用 LLM 从核心人设推断 HEXACO 六维（§6.1 路径①）。只由用户点按钮触发。 */
+			const onInferTrait = async (id) => {
+				setHints((h) => ({
+					...h,
+					[id]: "推断中…"
+				}));
+				try {
+					const t = (await api.inferTraitBaseline(id)).traitBaseline;
+					setHints((h) => ({
+						...h,
+						[id]: t ? "已推断：" + [
+							"H",
+							"E",
+							"X",
+							"A",
+							"C",
+							"O"
+						].map((k) => k + " " + (t[k] >= 0 ? "+" : "") + t[k].toFixed(2)).join(" · ") : "⚠ 推断未返回坐标"
+					}));
+					await refresh();
+				} catch (e) {
+					setHints((h) => ({
+						...h,
+						[id]: "推断失败: " + String(e)
 					}));
 				}
 			};
@@ -1171,6 +1523,34 @@ window.__ModuleLoader__.load({
 										placeholder: "扩展设定（如：养一只叫豆豆的狗，雨天情绪低……）",
 										style: textarea
 									}),
+									traitDefs.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										style: meta,
+										children: [
+											"HEXACO 人格坐标（Trait 层）：每假人标一次的静态人格基线， 同时是每日漂移的",
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "重力中心" }),
+											"——累积偏移会被拉回这里。"
+										]
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TraitSliders, {
+										defs: traitDefs,
+										value: traitDrafts[m.id] ?? {
+											H: 0,
+											E: 0,
+											X: 0,
+											A: 0,
+											C: 0,
+											O: 0
+										},
+										onChange: (next) => {
+											setTraitDrafts((d) => ({
+												...d,
+												[m.id]: next
+											}));
+											setHints((h) => h[m.id] ? {
+												...h,
+												[m.id]: ""
+											} : h);
+										}
+									})] }) : null,
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 										style: {
 											...row,
@@ -1179,9 +1559,23 @@ window.__ModuleLoader__.load({
 										children: [
 											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 												style: buttonGhost,
-												onClick: () => onSave(m.id, drafts[m.id]?.core ?? "", drafts[m.id]?.ext ?? ""),
+												onClick: () => onSave(m.id, drafts[m.id]?.core ?? "", drafts[m.id]?.ext ?? "", traitDrafts[m.id] ?? {
+													H: 0,
+													E: 0,
+													X: 0,
+													A: 0,
+													C: 0,
+													O: 0
+												}),
 												disabled: busy,
 												children: "保存人格"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+												style: buttonGhost,
+												onClick: () => void onInferTrait(m.id),
+												disabled: busy,
+												title: "用 LLM 读核心人设，推断 HEXACO 六维坐标并写入",
+												children: "从人设自动推断"
 											}),
 											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 												style: buttonGhost,

@@ -22,6 +22,18 @@ import type {
  * 改了形参名，此处必须同步。顺序无关（host 按 wire 键名匹配），但键名必须一致。
  */
 
+// HEXACO 六维人格坐标（与 golem 服务端 `src/types.ts` 的 TraitBaseline 对齐）。
+// ⚠️ 忘记加这个字段的后果是**静默 strip**：meta 读回来 traitBaseline 就没了，
+// 保存也不生效——分层改造时已踩过一次同类坑。
+const traitBaselineSchema = z.object({
+  H: z.number(),
+  E: z.number(),
+  X: z.number(),
+  A: z.number(),
+  C: z.number(),
+  O: z.number(),
+})
+
 // 与 golem 服务端 `src/types.ts` 的 `InstanceMeta` 保持一致的 zod schema。
 // 客户端不引入服务端包（保证 bundle 纯度）；此 schema 须随服务端同步变更。
 const instanceMetaSchema = z.object({
@@ -31,6 +43,7 @@ const instanceMetaSchema = z.object({
   // 与 golem 服务端 `src/types.ts` 的 `InstanceMeta.personaCore/personaExt` 对齐。
   personaCore: z.string().optional(),
   personaExt: z.string().optional(),
+  traitBaseline: traitBaselineSchema.optional(),
   createdAt: z.number(),
   turns: z.number(),
 })
@@ -43,6 +56,7 @@ const instanceMetaPatchSchema = z.object({
   // 与 golem 服务端 `src/types.ts` 的 `InstanceMeta.personaCore/personaExt` 对齐。
   personaCore: z.string().optional(),
   personaExt: z.string().optional(),
+  traitBaseline: traitBaselineSchema.optional(),
   createdAt: z.number().optional(),
   turns: z.number().optional(),
 })
@@ -55,6 +69,12 @@ const driftInputSchema = z.object({
   memoryTopics: z.number(),
   historyDrifts: z.number(),
 })
+// evidence 结构化引用（docs/persona-drift-dimensions.md §6.4）：
+// nodeId 必须是图中真实存在的 id；quote 只是人读摘录。
+const driftEvidenceRefSchema = z.object({
+  nodeId: z.string().optional(),
+  quote: z.string(),
+})
 const driftParsedSchema = z.object({
   dims: z.record(z.string(), z.number()),
   cumulative: z.record(z.string(), z.number()),
@@ -63,11 +83,41 @@ const driftParsedSchema = z.object({
   preoccupation: z.string().optional(),
   rationale: z.string().optional(),
   evidence: z.array(z.string()),
+  evidenceRefs: z.array(driftEvidenceRefSchema).optional(),
+  traitTarget: z.record(z.string(), z.number()).optional(),
+  revertPull: z.record(z.string(), z.number()).optional(),
 })
 const driftWrittenSchema = z.object({
   nodeId: z.string(),
   causalEdges: z.number(),
   evidenceEdges: z.number(),
+  // 未能建成边的 evidence 条数（悬空引用）。UI 显示成「evidence 边 2（悬空 3）」。
+  evidenceSkipped: z.number(),
+})
+
+// ── 维度定义（getDriftDims，docs/persona-drift-dimensions.md §9.1） ──────────
+// 维度不再硬编码在前端：后端是单一真源，改维度前端自动跟上。
+const driftDimDefSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  pos: z.string(),
+  neg: z.string(),
+  layer: z.enum(["state", "expression"]),
+  scope: z.string(),
+  notScope: z.string(),
+})
+const traitDimDefSchema = z.object({
+  key: z.enum(["H", "E", "X", "A", "C", "O"]),
+  label: z.string(),
+  hint: z.string(),
+  pos: z.string(),
+  neg: z.string(),
+  // false = 不参与每日漂移（H/C 在闲聊文本中不可观测）→ UI 灰显
+  drifts: z.boolean(),
+})
+const driftDimsPayloadSchema = z.object({
+  drift: z.array(driftDimDefSchema),
+  trait: z.array(traitDimDefSchema),
 })
 const driftRecordSchema = z.object({
   instanceId: z.string(),
@@ -222,6 +272,26 @@ const descriptors: readonly InvocationDescriptor[] = [
       { name: 'instanceId', wire: 'instanceId', source: 'json', codec: strict('golem/types#InstanceId', z.string()) },
     ],
     result: strict('golem/types#DriftRecord[]', remoteResult(z.array(driftRecordSchema))),
+  },
+  {
+    id: 'golem#golem/getDriftDims',
+    service: 'golem',
+    namespace: 'golem',
+    method: 'getDriftDims',
+    invocation: { kind: 'direct' },
+    parameters: [],
+    result: strict('golem/types#DriftDims', remoteResult(driftDimsPayloadSchema)),
+  },
+  {
+    id: 'golem#golem/inferTraitBaseline',
+    service: 'golem',
+    namespace: 'golem',
+    method: 'inferTraitBaseline',
+    invocation: { kind: 'direct' },
+    parameters: [
+      { name: 'id', wire: 'id', source: 'json', codec: strict('golem/types#InstanceId', z.string()) },
+    ],
+    result: strict('golem/types#InstanceMeta', remoteResult(instanceMetaSchema)),
   },
   {
     id: 'golem#golem/getKnowledgeRecords',

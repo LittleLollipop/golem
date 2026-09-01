@@ -1,11 +1,20 @@
-# 性格漂移维度重构：三层人格坐标系 设计文档 v0.1
+# 性格漂移维度重构：三层人格坐标系 设计文档 v0.2
 
-> 状态：**待评审**（选定方案 A，尚未实现）
+> 状态：**已拍板，实现中**（方案 A；Q3/Q5/Q6 已于 2026-09-01 由用户裁定）
 > 日期：2026-09-01
 > 触发：用户提问「性格的漂移量为什么是这五个维度」→「是不是应该找比较权威的心理学上的维度来用，不要自己造」。
 > 前置文档：`docs/persona-drift.md`（机制）、`docs/persona-layering.md`（人设分层，已实现）
 >
 > 本文档所有"现状"结论均标注代码行号或真实数据文件行；所有心理学引用均标注可检索来源。
+
+## 已裁定的开放问题（2026-09-01）
+
+| # | 裁定 | 落地方式 |
+|---|---|---|
+| **Q3** | **露** | UI「人格坐标」面板露出 HEXACO 全部六维，其中 **H / C 两维灰显并注明"仅作人格坐标，不参与每日漂移"**（§9.2） |
+| **Q5** | **修** | evidence 悬空边与本次重构**同批修**，见 §6.4 |
+| **Q6** | **HEXACO** | Trait 层用 HEXACO 六维（不是大五） |
+| Q7（迁移） | 用户未另行指定 → **按 §7 默认方案：归档 v1，不逐维映射** | 仅 `schemaVersion` 过滤，不写迁移代码 |
 
 ---
 
@@ -56,16 +65,18 @@
 
 > 诊断链：**输入重复 → 输出恒定 → 累积单调 → 必然撞边界**。换一套维度名字不影响这条链的任何一环。**重力回弹（§5）与提示词改造（§6.3）才是治本**，维度正名是同一批次里的另一件事。
 
-### 1.4 顺带发现的缺陷（❗ 不在本次范围，需你确认是否纳入）
+### 1.4 顺带发现的缺陷（✅ Q5 裁定：与本次同批修，见 §6.4）
 
 `persona-drift.ts:311-315` 为每条 evidence 建 `relates` 边。设计意图是连到**记忆节点 id**（`persona-drift.md:164`），但模型实际返回的是**自然语言文本**：
 
 - 08-30：`['节拍讨论中的坚持与让步', '钟无艳大纲的回应', ...]`
 - 09-01：`['U: 你知道写故事的节拍吗? 你觉得这几卷分别应该用什么节拍模式写呀', ...]`
 
-→ **evidence 边全部指向不存在的节点**，UI 上 `evidence 边 4` 的计数在涨，追溯能力实际为 0。这是evidence 机制的静默失效。
+→ **evidence 边全部指向不存在的节点**，UI 上 `evidence 边 4` 的计数在涨，追溯能力实际为 0。这是 evidence 机制的**静默失效**——计数在涨、能力为零，比直接报错更危险。
 
-**本文档不擅自扩大范围**，仅登记。建议与本次重构同批修（改动量小），但由你点头。
+根因是**提示词要求的东西模型给不出来**：提示词写"evidence 最多 5 个节点 id"，但喂给模型的上下文里根本没有 id，只有对话文本。模型只能编一个看起来像 id 的字符串。
+
+修复：**把候选 id 喂进去 + 建边前校验存在**（§6.4）。
 
 ---
 
@@ -305,6 +316,64 @@ props: {
 2. **切割 mood 与 emotionality**（§4.3）。
 3. **逐维操作定义**（§4.2 表格直接写进提示词），用于去共线。
 
+### 6.4 evidence 引用修复（Q5）
+
+**原则：no dangling edges。** 建不出真实边的引用就不建边，但要留下痕迹可审计——绝不能像现在这样"计数在涨、追溯为零"。
+
+**① 上下文喂候选 id**（治根因）
+`recentDialogue` / `recentMemoryTopics` 改为同时返回节点 id。提示词的对话段从
+
+```
+U: 你知道写故事的节拍吗?
+A: 我建议先……
+```
+
+改为
+
+```
+[evt_7f3a] U: 你知道写故事的节拍吗?
+           A: 我建议先……
+```
+
+并显式声明："evidence 必须从上述方括号 id 中选取，不要自己编造 id。"
+
+**② 数据结构：引用与引文分离**
+
+```ts
+export interface DriftEvidenceRef {
+  /** 图中真实存在的节点 id；缺失表示模型只给了引文、未对应到节点。 */
+  nodeId?: string;
+  /** 支撑判断的原文摘录（人读）。 */
+  quote: string;
+}
+```
+
+`DriftRecord` 新增 `evidenceRefs: DriftEvidenceRef[]`；旧字段 `evidence: string[]` 保留为兼容视图（= `evidenceRefs.map(r => r.quote)`），JSONL / UI 不破坏。
+
+模型输出格式放宽为**两种都接受**：
+
+```json
+"evidence": ["evt_7f3a", {"nodeId":"evt_7f3a","quote":"她说……"}]
+```
+
+字符串元素 → `{ quote: <字符串>, nodeId: undefined }`（旧行为降级为纯引文）。
+
+**③ 建边前校验 + 只计真实边**
+
+```ts
+const live = new Set((await this.store.query({ instanceId, limit: 1000 })).map(n => n.id));
+for (const ref of refs) {
+  if (!ref.nodeId || !live.has(ref.nodeId)) { evidenceSkipped++; continue; }
+  await this.store.addEdge({ from: newId, to: ref.nodeId, kind: "relates", ... });
+  evidenceEdges++;
+}
+```
+
+`DriftExecutionResult.written` 增加 `evidenceSkipped: number`，UI 显示成 `evidence 边 2（悬空 3）`。
+→ 追溯有效性从"黑盒"变成 §11 指标 5 可直接读数的东西。
+
+**④ 不新增节点**：引文只作为 drift 节点 props 存，不为每条引文造节点（避免图被低价值碎片污染）。
+
 ---
 
 ## 7. 迁移：legacy 链怎么处理
@@ -321,6 +390,16 @@ props: {
 代价：已累积的"性格倾向"归零，UI 上 ysj 的当前偏移会重置。**影响极小**——最大累积才 0.3，且本就是恒定偏置的产物。
 
 若你倾向保留连续性，替代方案是：把 v1 的 `cumulative` 按 §4.4 映射进 v2 起点并打 `migrated: true` 标记。我建议走默认方案（不迁移），但这是你的决定。
+
+**执行记录（2026-09-01）**：已按默认方案落地——v1 节点保留在图里，`loadDriftChain` 默认只返回 v2。
+同时为两个存量实例补标了 HEXACO 基线（一次性迁移，经与 UI 按钮相同的路径）：
+
+| 实例 | H | E | X | A | C | O |
+|---|---|---|---|---|---|---|
+| `ysj` 遗思静 | +0.30 | +0.40 | **−0.20** | +0.10 | +0.50 | +0.60 |
+| `wgg` 王梗梗 | +0.20 | +0.30 | **+0.80** | +0.40 | +0.50 | +0.70 |
+
+两人只在 X（外向性）上明显分野（−0.20 vs +0.80），与各自人设一致（遗思静内向、王梗梗话密爱玩梗）；C/H 两维模型给的都是中等正值——**这正是 §12-Q2 的不确定性**：模型对"诚实-谦逊"这类人设里没写的维度倾向于给保守中值。这两维反正不参与漂移，影响有限；E/O 是否可信要靠 §11 指标观察 2 周。
 
 ---
 
@@ -345,10 +424,16 @@ props: {
 | `src/types.ts` | 新增 `TraitBaseline`；`InstanceMeta` 加 `traitBaseline?` |
 | `src/leak/config.ts` | 新增 §8.1 配置项；`PersonaDriftConfig` 加 `dims` 默认值、per-dim caps、回弹参数 |
 | `src/agent/persona-drift.ts` | ① `DIM_LABELS` 换轴 + 中文名；② 累积计算加 `revertPull`；③ `targetOf` 映射；④ 提示词改造；⑤ `schemaVersion` 读写与过滤；⑥ per-dim cap |
-| `src/agent/persona-drift.ts` | 新导出 `inferTraitBaseline(corePersona, llm): Promise<TraitBaseline>` |
-| `src/registry/instance-registry.ts` | `createInstance` 支持 `traitBaseline` |
+| `src/agent/persona-drift.ts` | 新导出 `inferTraitBaseline(corePersona, llm): Promise<TraitBaseline>`、`revertPull`、`targetOf`、`DIM_DEFS` |
+| `src/registry/instance-registry.ts` | `create(..., opts)` 的 opts 加可选 `traitBaseline`（内部/API 用） |
 | `src/golem-instance-api.ts` | 同上 |
-| `src/golem-remote.ts` | meta schema 加 `traitBaseline`；**新增 `GET /<id>/drift-dims`**（维度定义下发，见 §9） |
+| `src/golem-remote.ts` | 新增 `getDriftDims()`、`inferTraitBaseline(id)` 两个 `@Remote` |
+
+> **对 §8.2 的一处主动偏离**：原计划「`createInstance` 支持 `traitBaseline`」在 **remote 层不做**。
+> `@Remote` 方法的【编译后形参名】即 wire 键（`methodParameterNames`），加参数要同步改
+> `golem-remote-contribution.ts` 的 descriptor 且一旦不同步就静默丢字段（上次分层踩过同类坑）。
+> traitBaseline 是**创建后仍可改**的标注，走已有的 `setInstanceMeta` 通道即可，收益相同、风险为零。
+> registry / api 层的 opts 仍然加（服务端内部调用与测试用）。
 | `client/ui-golem-config/src/types.ts` | `InstanceMeta` 加 `traitBaseline`；新增 `TraitBaseline` |
 | `client/ui-golem-remote/src/golem-remote-contribution.ts` | 两个 meta schema 同步加字段（**漏了会被 strip**——上次分层时踩过） |
 
@@ -367,17 +452,21 @@ props: {
 体现方案 A 的核心——**静态坐标 + 重力中心**：
 
 ```
-宜人性    ├───────●────────┤        基线 +0.3   当前 +0.42
-外向性    ├────●───────────┤        基线 -0.2   当前 -0.05
-开放性    ├───────●────────┤        基线 +0.3   当前 +0.35
-情绪性    ├──────●─────────┤        基线 +0.1   当前 +0.18
-表达欲    ├───────●────────┤        基线 -0.2   当前 +0.10
-俏皮度    ├────────●───────┤        基线 +0.4   当前 +0.60  ⚠ 接近软带边界
+诚实谦逊  ├─────●──────────┤   +0.1   （灰）仅作人格坐标，不参与每日漂移
+情绪性    ├──────●─────────┤   +0.1   基线 +0.1 · 当前 +0.18
+外向性    ├────●───────────┤   -0.2   基线 -0.2 · 当前 -0.05
+宜人性    ├───────●────────┤   +0.3   基线 +0.3 · 当前 +0.42
+尽责性    ├────────●───────┤   +0.5   （灰）仅作人格坐标，不参与每日漂移
+开放性    ├───────●────────┤   +0.3   基线 +0.3 · 当前 +0.35
+─────────────────────────────────────────────────────────
+表达欲    ├───────●────────┤          基线 -0.2 · 当前 +0.10
+俏皮度    ├────────●───────┤          基线 +0.4 · 当前 +0.60  ⚠ 接近软带边界
 ```
 
-- 灰点 = trait 基线（重力中心）；彩条 = 当前累积（从基线向两侧延伸）
-- 超出软带（0.4）的维度高亮提示
-- 点击可展开该维度的漂移时间线
+- **上六维 = HEXACO 人格坐标（Trait 层）**：灰点 = trait 基线（重力中心）。其中 **H / C 两维灰显**并标注"仅作人格坐标，不参与每日漂移"（Q3 裁定）——它们在闲聊文本中不可观测，强行打分只会变成噪声（§4.1）。
+- **下两维 = 表现层**：在 HEXACO 中无对应轴，回弹目标用代理映射（§5.3）。
+- 彩条 = 当前累积（从基线向两侧延伸）；超出软带（0.4）的维度高亮提示。
+- 每维配一句白话注解（如"宜人性低 = 更爱抬杠"）。
 
 ### 9.3 实例配置：六个 trait 滑块
 
@@ -431,20 +520,38 @@ props: {
 | **delta 方差** | 每个维度 delta 的标准差 | 接近 0（如 §1.1 的恒定值） | 提示词回归指令没生效 |
 | **evidence 有效性** | evidence 能解析为真实节点 id 的比例 | < 50% | §1.4 缺陷未修，追溯仍失效 |
 
-指标 1/2/4/5 都可脚本化，建议加一个 `scripts/drift-dim-audit.ts` 从 JSONL 直接算，不依赖 LLM。
+指标 1/2/4/5 已脚本化：**`scripts/drift-dim-audit.ts`**，直接从 JSONL 算，不依赖 LLM：
+
+```
+npx tsx scripts/drift-dim-audit.ts ysj      # 单实例
+npx tsx scripts/drift-dim-audit.ts --all    # 全部
+```
+
+**它已能复现 §1.1 的人工排查结果**（对现有 3 天 v1 样本实测）：
+
+```
+[4] delta 方差    openness / playfulness / verbosity  stdDev = 0.0000  ✗ 近乎恒定
+[1] 维度共线      openness×playfulness / openness×verbosity / playfulness×verbosity
+                  assertiveness×warmth   r = 1.000  ✗
+[5] evidence     不可审计 —— 3 条记录均为 v1（无悬空计数）
+```
+
+⚠️ **evience 指标只对 v2+ 记录生效**：v1 记录没有 `evidenceSkipped` 字段，而它记的 `evidenceEdges` 全是悬空边——若把 v1 算进来会得出"命中 100%"的虚假结论。这正是该缺陷之所以"静默"的原因，脚本里显式排除并给出"不可审计"提示。
+
+样本 < 7 天时脚本会提醒"共线/失效/方差三项判据尚不可靠"（3 条样本下 r=1.000 极易是巧合），不假装统计显著。
 
 ---
 
 ## 12. 风险与开放问题
 
-| # | 问题 | 说明 / 建议 |
+| # | 问题 | 状态 / 说明 |
 |---|---|---|
-| Q1 | `emotionality` 与 `mood` 的边界模型真能守住吗？ | 已降 cap + 提示词切割。**但这是本次最大的不确定性**，需靠 §11 指标 5 与人工抽样审 rationale 验证 |
-| Q2 | Trait 基线谁标？自动推断准不准？ | 默认 LLM 推断 + 人工可改。推断质量需在 §10 用例 12 里看稳定性，不稳就改成"创建实例时强制用户标六滑块" |
-| Q3 | 六维 baseline 用户看得懂吗？ | HEXACO 六词对非专业用户偏学术。UI 需给每维一句白话注解（如"宜人性低 = 更爱抬杠"）。**要不要在 UI 里露出 H/C 两个不参与漂移的维度？** 露了完整但易困惑，不露则坐标残缺。倾向：露，但灰显并注明"仅作人格坐标，不参与每日漂移" |
+| Q1 | `emotionality` 与 `mood` 的边界模型真能守住吗？ | **开放**。已降 cap + 提示词切割。**这是本次最大的不确定性**，需靠 §11 指标 4/5 与人工抽样审 rationale 验证 |
+| Q2 | Trait 基线谁标？自动推断准不准？ | **开放**。默认 LLM 推断 + 人工可改。推断质量看 §10 用例 12 稳定性，不稳就改成"创建实例时强制标六滑块"。⚠️ **不做内省时静默写回 meta**——`set_meta` 是整块覆盖，与 UI 编辑并发会丢改，故只在用户点按钮时写 |
+| Q3 | UI 要不要露出 H/C 两个不参与漂移的维度？ | ✅ **裁定：露**，灰显并注明"仅作人格坐标，不参与每日漂移"。六维每维配一句白话注解（如"宜人性低 = 更爱抬杠"） |
 | Q4 | 回弹会不会压掉真实漂移？ | 软带 0.4 内自由漂移，超出才强回弹。参数（SOFT_BAND / REVERT_K）外置可调，按 §11 贴边率指标调 |
-| Q5 | 与 §1.4（evidence 悬空边）是否同批修？ | **待你确认**。改动量小（evidence 改为接受文本引用或强制从候选 id 里选），但属范围外 |
-| Q6 | HEXACO 还是大五做 Trait 层？ | 本文档选 HEXACO（六维信息量更大，H 维对"这个人是谁"表达力强）。若你更看重"与 State 层轴名严格一致"，可换成大五五维——**代价是 C 维在 State 层无对应，Trait 层少一维**。请确认 |
+| Q5 | evidence 悬空边是否同批修？ | ✅ **裁定：修**，与本次同批，设计见 §6.4 |
+| Q6 | HEXACO 还是大五做 Trait 层？ | ✅ **裁定：HEXACO** 六维（H 维对"这个人是谁"表达力强） |
 | R1 | 换维度后旧 UI / 旧记录的兼容 | 已用 `schemaVersion` + 后端下发维度定义两处兜住 |
 | R2 | `FAKEREN_DRIFT_DIMS` 默认值变更是破坏性变更 | 需在 v0.5.0 CHANGELOG 显著标注 |
 

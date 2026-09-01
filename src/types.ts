@@ -81,6 +81,54 @@ export interface DshContext {
 
 export type InstanceId = string;
 
+/**
+ * HEXACO 六维人格坐标（Trait 层，docs/persona-drift-dimensions.md §3）。
+ *
+ * 每维 ∈ [-1, 1]，0 = 常人均值。每个假人**标一次**，是静态的人格坐标，
+ * 同时充当 State 层漂移的**重力中心**（回弹目标）。
+ *
+ * 与 State 层的关键区别：Trait 层可以宽（六维全留），因为它不需要每日从对话
+ * 中观测——H（诚实-谦逊）与 C（尽责性）在闲聊文本里不可观测，但在描述"这个
+ * 人是谁"时表达力很强，所以留在 Trait 层、剔除出 State 层。
+ */
+export interface TraitBaseline {
+  /** Honesty-Humility 诚实-谦逊：高 = 不投机、不虚荣、不贪小便宜 */
+  H: number;
+  /** Emotionality 情绪性：高 = 易担忧、易受伤、需要情感支持 */
+  E: number;
+  /** Extraversion 外向性：高 = 社交自信、活跃、爱表达 */
+  X: number;
+  /** Agreeableness 宜人性：高 = 温顺包容、少反驳（低 = 爱抬杠） */
+  A: number;
+  /** Conscientiousness 尽责性：高 = 有条理、自律、靠谱 */
+  C: number;
+  /** Openness 经验开放性：高 = 好奇、爱联想、接受新鲜事物 */
+  O: number;
+}
+
+/** HEXACO 六维的键顺序（UI 滑块 / 坐标面板的固定排序）。 */
+export const TRAIT_KEYS = ["H", "E", "X", "A", "C", "O"] as const;
+
+/** 全零基线（未标注 / 降级时的默认值）。 */
+export function zeroTraitBaseline(): TraitBaseline {
+  return { H: 0, E: 0, X: 0, A: 0, C: 0, O: 0 };
+}
+
+/**
+ * 把任意输入安全规整成 TraitBaseline。缺维/非有限数 → 0，越界 → clamp。
+ * 用于反序列化 meta（外部可写，不能信任）。
+ */
+export function normalizeTraitBaseline(raw: unknown): TraitBaseline {
+  const out = zeroTraitBaseline();
+  if (!raw || typeof raw !== "object") return out;
+  const o = raw as Record<string, unknown>;
+  for (const k of TRAIT_KEYS) {
+    const v = Number(o[k]);
+    if (Number.isFinite(v)) out[k] = Math.max(-1, Math.min(1, v));
+  }
+  return out;
+}
+
 export interface InstanceMeta {
   id: InstanceId;
   name: string;
@@ -104,6 +152,13 @@ export interface InstanceMeta {
    * 靠 memory_recall 按需拉取（docs/persona-layering.md §4）。不常驻注入。
    */
   personaExt?: string;
+  /**
+   * HEXACO 六维人格坐标（Trait 层）。每个假人标一次，静态。
+   * 缺失 → 回弹目标退化为 0（功能不中断，见 persona-drift-dimensions.md §10 用例 9）。
+   * ⚠️ 只在用户显式操作时写回（UI 滑块 / 自动推断按钮）；内省路径绝不静默写 meta——
+   * set_meta 是整块覆盖，与 UI 编辑并发会丢改。
+   */
+  traitBaseline?: TraitBaseline;
 }
 
 // ── Memory graph (维度 H) ─────────────────────────────────────────────────

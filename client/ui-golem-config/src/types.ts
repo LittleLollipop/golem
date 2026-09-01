@@ -4,6 +4,25 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
  * 与 golem 服务端 `src/types.ts` 的 `InstanceMeta` 保持一致的客户端镜像类型。
  * 客户端不引入服务端包（保证 bundle 纯度）；此类型须随服务端同步变更。
  */
+/**
+ * HEXACO 六维人格坐标（Trait 层）。
+ * 与 golem 服务端 `src/types.ts` 的 TraitBaseline 保持一致；每维 ∈ [-1, 1]。
+ */
+export interface TraitBaseline {
+  /** 诚实-谦逊（高 = 不投机、不虚荣） */
+  H: number
+  /** 情绪性（高 = 易担忧、易受伤） */
+  E: number
+  /** 外向性（高 = 社交自信、活跃） */
+  X: number
+  /** 宜人性（高 = 温顺包容；低 = 爱抬杠） */
+  A: number
+  /** 尽责性（高 = 有条理、自律） */
+  C: number
+  /** 经验开放性（高 = 好奇、爱联想） */
+  O: number
+}
+
 export interface InstanceMeta {
   id: string
   name: string
@@ -18,8 +37,40 @@ export interface InstanceMeta {
    * 按需经 recall 拉取，seed 进 axolotl 图（docs/persona-layering.md）。
    */
   personaExt?: string
+  /**
+   * HEXACO 六维人格坐标。每个假人标一次，静态；兼作每日漂移的重力中心。
+   * 缺失 → 回弹目标退化为 0（功能不中断）。
+   */
+  traitBaseline?: TraitBaseline
   createdAt: number
   turns: number
+}
+
+/** 一个可漂移维度的定义（后端单一真源，经 getDriftDims 下发）。 */
+export interface DriftDimDef {
+  key: string
+  label: string
+  pos: string
+  neg: string
+  layer: 'state' | 'expression'
+  scope: string
+  notScope: string
+}
+
+/** HEXACO 六维坐标定义（含 drifts 标记，false → UI 灰显）。 */
+export interface TraitDimDef {
+  key: 'H' | 'E' | 'X' | 'A' | 'C' | 'O'
+  label: string
+  hint: string
+  pos: string
+  neg: string
+  drifts: boolean
+}
+
+/** getDriftDims 的返回形状。 */
+export interface DriftDimsPayload {
+  drift: DriftDimDef[]
+  trait: TraitDimDef[]
 }
 
 /**
@@ -54,9 +105,21 @@ export interface DriftExecutionResult {
     preoccupation?: string
     rationale?: string
     evidence: string[]
+    /** 结构化引用：nodeId 已校验为图中真实存在的节点。 */
+    evidenceRefs?: Array<{ nodeId?: string; quote: string }>
+    /** 本次计算所用的回弹目标（可审计）。 */
+    traitTarget?: Record<string, number>
+    /** 本次实际施加的回弹量（负值 = 往基线拉回）。 */
+    revertPull?: Record<string, number>
   }
   /** 落盘位置。 */
-  written?: { nodeId: string; causalEdges: number; evidenceEdges: number }
+  written?: {
+    nodeId: string
+    causalEdges: number
+    evidenceEdges: number
+    /** 悬空引用数（没建成边的 evidence）。 */
+    evidenceSkipped: number
+  }
 }
 
 /**
@@ -101,4 +164,8 @@ export interface GolemRemoteApi {
   deleteInstance(id: string): Promise<RemoteResult<null>>
   getDriftRecords(instanceId: string): Promise<RemoteResult<DriftExecutionResult[]>>
   getKnowledgeRecords(instanceId: string): Promise<RemoteResult<LearnedFact[]>>
+  /** 维度定义（后端单一真源；前端不再硬编码维度名，§9.1）。 */
+  getDriftDims(): Promise<RemoteResult<DriftDimsPayload>>
+  /** 用 LLM 从核心人设推断 HEXACO 六维基线并写入 meta（用户显式触发）。 */
+  inferTraitBaseline(id: string): Promise<RemoteResult<InstanceMeta>>
 }

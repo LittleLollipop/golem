@@ -64,6 +64,14 @@ export function loadLeakConfig(): LeakConfig {
 //   FAKEREN_DRIFT_RECENT_DAYS  近期对话/记忆窗口 (默认 7)
 //   FAKEREN_DRIFT_HISTORY_DAYS 历史 drift 链窗口 (默认 14)
 //   FAKEREN_DRIFT_DIMS         维度集合 (逗号分隔)
+//   FAKEREN_DRIFT_REVERT_K     重力回弹基准系数 (默认 0.2)
+//   FAKEREN_DRIFT_SOFT_BAND    自由漂移带半宽 (默认 0.4)
+//   FAKEREN_DRIFT_DIM_CAPS     per-dim 单日上限 JSON (默认 {"emotionality":0.08})
+//   FAKEREN_DRIFT_HEURISTIC_VOL 启发式波动幅度 (1 开 / 0 关，默认关)
+//
+// ⚠️ FAKEREN_DRIFT_DIMS 的默认值在 v0.5.0 从旧五维（openness/warmth/verbosity/
+// playfulness/assertiveness）换成了「HEXACO 状态轴 + 表现层」六维。旧链靠
+// drift 节点的 schemaVersion 过滤，不会污染新累积（docs/persona-drift-dimensions.md §7）。
 
 export interface PersonaDriftConfig {
   /** master switch — off → intro任务 completely skipped. */
@@ -78,6 +86,21 @@ export interface PersonaDriftConfig {
   historyDays: number;
   /** the personality dimensions the introspection may move. */
   dims: string[];
+  /**
+   * 重力回弹基准系数。软带内每天把累积拉回 target 的 `k` 倍；
+   * 超出软带后系数按超出量线性放大（docs/persona-drift-dimensions.md §5.2）。
+   * 0 = 关闭回弹（退化为旧行为，仅硬 clamp）。
+   */
+  revertK: number;
+  /** 自由漂移带半宽：|cum - target| ≤ softBand 时只有弱回弹。 */
+  softBand: number;
+  /** per-dim 单日增量上限，覆盖 dailyDeltaCap。缺省用 dailyDeltaCap。 */
+  dimCaps: Record<string, number>;
+  /**
+   * 启发式波动幅度：trait 水平越高 → 允许波动越大。
+   * ⚠️ 这是工程启发式，**没有文献支持**，默认关闭。
+   */
+  heuristicVol: boolean;
   /** where introspection execution reports are written (one .drift-log.md per
    *  instance + a machine-readable .last.json). Makes the otherwise-black-box
    *  idle introspection observable (user 2026-08-30). */
@@ -93,7 +116,14 @@ export function loadPersonaDriftConfig(): PersonaDriftConfig {
   const dimsEnv = process.env.FAKEREN_DRIFT_DIMS;
   const dims = dimsEnv
     ? dimsEnv.split(",").map((s) => s.trim()).filter(Boolean)
-    : ["openness", "warmth", "verbosity", "playfulness", "assertiveness"];
+    : [
+        "extraversion",
+        "agreeableness",
+        "openness",
+        "emotionality",
+        "verbosity",
+        "playfulness",
+      ];
   return {
     enabled: boolEnv(process.env.FAKEREN_DRIFT_ENABLED, true),
     dailyDeltaCap: num(process.env.FAKEREN_DRIFT_DAILY_CAP, 0.15),
@@ -101,6 +131,28 @@ export function loadPersonaDriftConfig(): PersonaDriftConfig {
     recentDays: num(process.env.FAKEREN_DRIFT_RECENT_DAYS, 7),
     historyDays: num(process.env.FAKEREN_DRIFT_HISTORY_DAYS, 14),
     dims,
+    revertK: num(process.env.FAKEREN_DRIFT_REVERT_K, 0.2),
+    softBand: num(process.env.FAKEREN_DRIFT_SOFT_BAND, 0.4),
+    dimCaps: (() => {
+      const raw = process.env.FAKEREN_DRIFT_DIM_CAPS;
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as unknown;
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            const out: Record<string, number> = {};
+            for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+              const n = Number(v);
+              if (Number.isFinite(n) && n >= 0) out[k] = n;
+            }
+            return out;
+          }
+        } catch {
+          /* fall through to default — a malformed env must not crash startup */
+        }
+      }
+      return { emotionality: 0.08 };
+    })(),
+    heuristicVol: boolEnv(process.env.FAKEREN_DRIFT_HEURISTIC_VOL, false),
     reportDir:
       process.env.FAKEREN_DRIFT_REPORT_DIR ??
       path.join(os.homedir(), ".fakeren", "drift-reports"),

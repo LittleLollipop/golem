@@ -21,10 +21,22 @@ import { TypertRemoteService, Remote, type RemoteResult } from "@deepseek-ai/dsh
 import { GolemInstanceApi } from "./golem-instance-api.js";
 import { AxolotlClient } from "./memory/axolotl-client.js";
 import { InstanceRegistry } from "./registry/instance-registry.js";
-import { readDriftRecords } from "./agent/persona-drift.js";
+import {
+  activeDimDefs,
+  inferTraitBaseline,
+  readDriftRecords,
+  resolveCorePersona,
+  TRAIT_DIM_DEFS,
+} from "./agent/persona-drift.js";
+import { loadPersonaDriftConfig } from "./leak/config.js";
+import { HttpLlmClient, type LlmClient } from "./llm/client.js";
 import { readKnowledgeRecords } from "./knowledge/ledger-read.js";
 import type { InstanceId, InstanceMeta } from "./types.js";
-import type { DriftExecutionResult } from "./agent/persona-drift.js";
+import type {
+  DriftExecutionResult,
+  DriftDimDef,
+  TraitDimDef,
+} from "./agent/persona-drift.js";
 import type { LearnedFact } from "./knowledge/types.js";
 
 declare module "@deepseek-ai/cordis" {
@@ -36,6 +48,19 @@ declare module "@deepseek-ai/cordis" {
 export interface GolemRemoteConfig {
   /** axolotl sidecar 地址；缺省走 AxolotlClient 默认（环境变量 / 127.0.0.1:8741）。 */
   sidecarUrl?: string;
+  /**
+   * 注入的 LLM 客户端（测试用）。不传则从环境变量懒构造 HttpLlmClient；
+   * 环境变量也没有 → `inferTraitBaseline` 返回 `no-llm` 失败，其它接口不受影响。
+   */
+  llm?: LlmClient;
+}
+
+/** 维度定义的下发形状：漂移维度 + Trait 坐标维度（后端单一真源，§9.1）。 */
+export interface DriftDimsPayload {
+  /** 当前实际生效的漂移维度（已按 FAKEREN_DRIFT_DIMS 过滤）。 */
+  drift: DriftDimDef[];
+  /** HEXACO 六维人格坐标定义（含 drifts 标记，供 UI 灰显不参与漂移的维度）。 */
+  trait: TraitDimDef[];
 }
 
 /** 成功分支：冻结的 `{ ok: true, value }`。 */
@@ -56,12 +81,27 @@ export class GolemRemoteService extends TypertRemoteService {
   static inject: string[] = [];
 
   private readonly api: GolemInstanceApi;
+  private readonly injectedLlm?: LlmClient;
 
   constructor(ctx: unknown, config: GolemRemoteConfig = {}) {
     super(ctx as never, "golem");
     const store = new AxolotlClient(config.sidecarUrl);
     const registry = new InstanceRegistry(store);
     this.api = new GolemInstanceApi({ registry, store });
+    this.injectedLlm = config.llm;
+  }
+
+  /**
+   * 懒构造 LLM 客户端。没有 API key 时返回 undefined（而不是抛异常）——
+   * 缺 LLM 只影响「自动推断人格坐标」这一个按钮，不该拖垮整个 remote 服务。
+   */
+  private llm(): LlmClient | undefined {
+    if (this.injectedLlm) return this.injectedLlm;
+    try {
+      return new HttpLlmClient();
+    } catch {
+      return undefined;
+    }
   }
 
   @Remote("listInstances")
@@ -119,6 +159,53 @@ export class GolemRemoteService extends TypertRemoteService {
     return readDriftRecords(instanceId).then(ok, (error) =>
       fail("drift-read-failed", error instanceof Error ? error.message : String(error)),
     );
+  }
+
+  /**
+   * 下发维度定义（docs/persona-drift-dimensions.md §9.1）。
+   *
+   * 旧实现把维度名与中文标签硬编码在 `DriftDashboard.tsx`，维度一改 UI 立即
+   * 错位（新维度渲染成裸 key）。现在前端只做渲染，定义在后端单一维护。
+   */
+  @Remote("getDriftDims")
+  getDriftDims(): Promise<RemoteResult<DriftDimsPayload>> {
+    const cfg = loadPersonaDriftConfig();
+    return Promise.resolve(
+      ok({ drift: activeDimDefs(cfg.dims), trait: [...TRAIT_DIM_DEFS] }),
+    );
+  }
+
+  /**
+   * 用 LLM 从核心人设推断 HEXACO 六维基线并**写入 meta**（§6.1 路径①）。
+   *
+   * ⚠️ 只由用户点 UI 按钮触发。内省路径绝不自动写回——meta 写入与 UI 编辑
+   * 存在并发窗口，静默写会覆盖用户刚改的东西（§12-Q2）。
+   */
+  @Remote("inferTraitBaseline")
+  async inferTraitBaseline(id: InstanceId): Promise<RemoteResult<InstanceMeta>> {
+    try {
+      const meta = await this.api.getInstanceMeta(id);
+      if (!meta) return fail("instance-not-found", `golem: instance "${id}" not found`);
+      const llm = this.llm();
+      if (!llm) {
+        return fail(
+          "no-llm",
+          "未配置 LLM（设置 DEEPSEEK_API_KEY / FAKEREN_LLM_API_KEY 后可用）",
+        );
+      }
+      const core = resolveCorePersona(meta, "");
+      if (!core.trim()) {
+        return fail("empty-persona", "核心人设为空，先填写核心人格再推断");
+      }
+      const traitBaseline = await inferTraitBaseline(core, llm);
+      const updated = await this.api.setInstanceMeta(id, { traitBaseline });
+      return ok(updated);
+    } catch (error) {
+      return fail(
+        "trait-infer-failed",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   /**

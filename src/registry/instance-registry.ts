@@ -11,7 +11,8 @@
  */
 
 import type { GraphStore } from "../memory/graph-store.js";
-import type { InstanceId, InstanceMeta } from "../types.js";
+import type { InstanceId, InstanceMeta, TraitBaseline } from "../types.js";
+import { normalizeTraitBaseline } from "../types.js";
 
 export class InstanceRegistry {
   constructor(private readonly store: GraphStore) {}
@@ -24,7 +25,7 @@ export class InstanceRegistry {
     id: InstanceId,
     name: string,
     persona?: string,
-    opts?: { personaCore?: string; personaExt?: string },
+    opts?: { personaCore?: string; personaExt?: string; traitBaseline?: TraitBaseline },
   ): Promise<InstanceMeta> {
     const list = await this.readInstances();
     if (list.some((m) => m.id === id)) return list.find((m) => m.id === id)!;
@@ -37,6 +38,7 @@ export class InstanceRegistry {
       ...(persona ? { persona } : {}),
       ...(opts?.personaCore ? { personaCore: opts.personaCore } : {}),
       ...(opts?.personaExt ? { personaExt: opts.personaExt } : {}),
+      ...(opts?.traitBaseline ? { traitBaseline: normalizeTraitBaseline(opts.traitBaseline) } : {}),
     };
     await this.store.setMeta(id, meta);
     return meta;

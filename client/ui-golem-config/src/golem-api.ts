@@ -1,5 +1,11 @@
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import type { GolemRemoteApi, InstanceMeta, DriftExecutionResult, LearnedFact } from './types.ts'
+import type {
+  GolemRemoteApi,
+  InstanceMeta,
+  DriftExecutionResult,
+  DriftDimsPayload,
+  LearnedFact,
+} from './types.ts'
 
 /**
  * 把 `ctx.remote.golem`（返回 `RemoteResult<T>`）包成「直接返回 T、失败时抛错」
@@ -16,6 +22,10 @@ export interface GolemApi {
   deleteInstance(id: string): Promise<null>
   getDriftRecords(instanceId: string): Promise<DriftExecutionResult[]>
   getKnowledgeRecords(instanceId: string): Promise<LearnedFact[]>
+  /** 维度定义（后端单一真源，前端不硬编码，§9.1）。 */
+  getDriftDims(): Promise<DriftDimsPayload>
+  /** 用 LLM 从核心人设推断 HEXACO 六维基线并写入 meta。 */
+  inferTraitBaseline(id: string): Promise<InstanceMeta>
 }
 
 /**
@@ -47,15 +57,20 @@ function unwrap<T>(r: unknown): T {
 }
 
 export function createGolemApi(remote: GolemRemoteApi): GolemApi {
+  // `unwrap` 的显式类型参数不是装饰：`.then(unwrap)` 会让 TS 把返回值推断成
+  // `Promise<unknown>`，每个方法都报 TS2322（pre-existing 类型噪音）。
   return {
-    listInstances: () => remote.listInstances().then(unwrap),
-    createInstance: (id, name, persona) => remote.createInstance(id, name, persona).then(unwrap),
-    getInstanceMeta: (id) => remote.getInstanceMeta(id).then(unwrap),
-    setInstanceMeta: (id, patch) => remote.setInstanceMeta(id, patch).then(unwrap),
-    getDefaultInstance: () => remote.getDefaultInstance().then(unwrap),
-    setDefaultInstance: (id) => remote.setDefaultInstance(id).then(unwrap),
-    deleteInstance: (id) => remote.deleteInstance(id).then(unwrap),
-    getDriftRecords: (id) => remote.getDriftRecords(id).then(unwrap),
-    getKnowledgeRecords: (id) => remote.getKnowledgeRecords(id).then(unwrap),
+    listInstances: () => remote.listInstances().then(unwrap<InstanceMeta[]>),
+    createInstance: (id, name, persona) =>
+      remote.createInstance(id, name, persona).then(unwrap<InstanceMeta>),
+    getInstanceMeta: (id) => remote.getInstanceMeta(id).then(unwrap<InstanceMeta | null>),
+    setInstanceMeta: (id, patch) => remote.setInstanceMeta(id, patch).then(unwrap<InstanceMeta>),
+    getDefaultInstance: () => remote.getDefaultInstance().then(unwrap<string | null>),
+    setDefaultInstance: (id) => remote.setDefaultInstance(id).then(unwrap<null>),
+    deleteInstance: (id) => remote.deleteInstance(id).then(unwrap<null>),
+    getDriftRecords: (id) => remote.getDriftRecords(id).then(unwrap<DriftExecutionResult[]>),
+    getKnowledgeRecords: (id) => remote.getKnowledgeRecords(id).then(unwrap<LearnedFact[]>),
+    getDriftDims: () => remote.getDriftDims().then(unwrap<DriftDimsPayload>),
+    inferTraitBaseline: (id) => remote.inferTraitBaseline(id).then(unwrap<InstanceMeta>),
   }
 }

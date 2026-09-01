@@ -4261,12 +4261,21 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		* 解析形参名作为 wire 键（dsh api-gateway `methodParameterNames`）。若服务端
 		* 改了形参名，此处必须同步。顺序无关（host 按 wire 键名匹配），但键名必须一致。
 		*/
+		const traitBaselineSchema = object({
+			H: number(),
+			E: number(),
+			X: number(),
+			A: number(),
+			C: number(),
+			O: number()
+		});
 		const instanceMetaSchema = object({
 			id: string(),
 			name: string(),
 			persona: string().optional(),
 			personaCore: string().optional(),
 			personaExt: string().optional(),
+			traitBaseline: traitBaselineSchema.optional(),
 			createdAt: number(),
 			turns: number()
 		});
@@ -4276,6 +4285,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			persona: string().optional(),
 			personaCore: string().optional(),
 			personaExt: string().optional(),
+			traitBaseline: traitBaselineSchema.optional(),
 			createdAt: number().optional(),
 			turns: number().optional()
 		});
@@ -4285,6 +4295,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			memoryTopics: number(),
 			historyDrifts: number()
 		});
+		const driftEvidenceRefSchema = object({
+			nodeId: string().optional(),
+			quote: string()
+		});
 		const driftParsedSchema = object({
 			dims: record(string(), number()),
 			cumulative: record(string(), number()),
@@ -4292,12 +4306,44 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			leaning: string().optional(),
 			preoccupation: string().optional(),
 			rationale: string().optional(),
-			evidence: array(string())
+			evidence: array(string()),
+			evidenceRefs: array(driftEvidenceRefSchema).optional(),
+			traitTarget: record(string(), number()).optional(),
+			revertPull: record(string(), number()).optional()
 		});
 		const driftWrittenSchema = object({
 			nodeId: string(),
 			causalEdges: number(),
-			evidenceEdges: number()
+			evidenceEdges: number(),
+			evidenceSkipped: number()
+		});
+		const driftDimDefSchema = object({
+			key: string(),
+			label: string(),
+			pos: string(),
+			neg: string(),
+			layer: _enum(["state", "expression"]),
+			scope: string(),
+			notScope: string()
+		});
+		const traitDimDefSchema = object({
+			key: _enum([
+				"H",
+				"E",
+				"X",
+				"A",
+				"C",
+				"O"
+			]),
+			label: string(),
+			hint: string(),
+			pos: string(),
+			neg: string(),
+			drifts: boolean()
+		});
+		const driftDimsPayloadSchema = object({
+			drift: array(driftDimDefSchema),
+			trait: array(traitDimDefSchema)
 		});
 		const driftRecordSchema = object({
 			instanceId: string(),
@@ -4489,6 +4535,29 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						codec: strict("golem/types#InstanceId", string())
 					}],
 					result: strict("golem/types#DriftRecord[]", remoteResult(array(driftRecordSchema)))
+				},
+				{
+					id: "golem#golem/getDriftDims",
+					service: "golem",
+					namespace: "golem",
+					method: "getDriftDims",
+					invocation: { kind: "direct" },
+					parameters: [],
+					result: strict("golem/types#DriftDims", remoteResult(driftDimsPayloadSchema))
+				},
+				{
+					id: "golem#golem/inferTraitBaseline",
+					service: "golem",
+					namespace: "golem",
+					method: "inferTraitBaseline",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "id",
+						wire: "id",
+						source: "json",
+						codec: strict("golem/types#InstanceId", string())
+					}],
+					result: strict("golem/types#InstanceMeta", remoteResult(instanceMetaSchema))
 				},
 				{
 					id: "golem#golem/getKnowledgeRecords",

@@ -12,7 +12,7 @@
  *  - 不再依赖 sidecar 平行 REST；数据统一走 dsh seam / remote。
  */
 
-import type { InstanceId, InstanceMeta } from "./types.js";
+import type { InstanceId, InstanceMeta, TraitBaseline } from "./types.js";
 import type { GraphStore } from "./memory/graph-store.js";
 import type { InstanceRegistry } from "./registry/instance-registry.js";
 
@@ -43,7 +43,7 @@ export class GolemInstanceApi {
     id: InstanceId,
     name: string,
     persona?: string,
-    opts?: { personaCore?: string; personaExt?: string },
+    opts?: { personaCore?: string; personaExt?: string; traitBaseline?: TraitBaseline },
   ): Promise<InstanceMeta> {
     return this.registry.create(id, name, persona, opts);
   }

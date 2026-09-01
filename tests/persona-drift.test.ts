@@ -22,6 +22,18 @@ import { FakeGraphStore } from "./fake-graph-store.js";
 
 const INST = "test-inst";
 
+/**
+ * ⚠️ 本文件刻意用**旧五维** dims + `revertK: 0`（关闭重力回弹）：
+ *
+ *  - dims 是配置覆盖，可以是任意维度集合（`FAKEREN_DRIFT_DIMS`），旧五维仍
+ *    是合法输入——本文件守的是**机制**（幂等 / 跳过 / 边 / clamp），与维度
+ *    选择无关。
+ *  - 关回弹是为了让「累积硬 clamp」这条断言保持原语义。回弹开启后的稳态
+ *    行为在 tests/persona-drift-v2.test.ts 里单独验证。
+ *
+ * 所有 fixture 节点必须带 `schemaVersion: 2`：v1（无此字段）节点已被归档、
+ * 不参与累积计算（docs/persona-drift-dimensions.md §7）。
+ */
 const cfg: PersonaDriftConfig = {
   enabled: true,
   dailyDeltaCap: 0.15,
@@ -29,6 +41,11 @@ const cfg: PersonaDriftConfig = {
   recentDays: 7,
   historyDays: 14,
   dims: ["openness", "warmth", "verbosity", "playfulness", "assertiveness"],
+  revertK: 0,
+  softBand: 0.4,
+  dimCaps: {},
+  heuristicVol: false,
+  reportDir: "/tmp/golem-drift-test",
 };
 
 /** a fixed "now" so today's date is deterministic across assertions. */
@@ -93,6 +110,7 @@ describe("PersonaDriftService", () => {
         "persona-drift-2026-08-29-aaa",
         {
           kind: "persona_drift",
+          schemaVersion: 2,
           date: "2026-08-29",
           dims: { openness: 0.1 },
           cumulative: { openness: 0.4 },
@@ -116,6 +134,7 @@ describe("PersonaDriftService", () => {
         "persona-drift-2026-08-29-bbb",
         {
           kind: "persona_drift",
+          schemaVersion: 2,
           date: "2026-08-29",
           dims: { openness: 0.95 },
           cumulative: { openness: 0.95 },
@@ -191,6 +210,7 @@ describe("PersonaDriftService", () => {
         "persona-drift-2026-08-29-ccc",
         {
           kind: "persona_drift",
+          schemaVersion: 2,
           date: "2026-08-29",
           dims: { warmth: 0.1 },
           cumulative: { warmth: 0.1 },

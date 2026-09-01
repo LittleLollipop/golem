@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, Component, type CSSProperties, type ReactNode } from 'react'
-import type { InstanceMeta } from './types.ts'
+import type { InstanceMeta, TraitBaseline, TraitDimDef } from './types.ts'
 import type { GolemApi } from './golem-api.ts'
 import { DriftDashboard } from './DriftDashboard.tsx'
 import { KnowledgeDashboard } from './KnowledgeDashboard.tsx'
@@ -52,6 +52,51 @@ const hint: CSSProperties = { fontSize: 12, color: '#b06', minHeight: 16, margin
  * GolemSettings 子树卸载 → 点开「内省记录」即全白。此边界让崩溃被收敛到内容区、
  * 且提供「重试」按钮，而非白屏。
  */
+/**
+ * HEXACO 六维人格坐标滑块（docs/persona-drift-dimensions.md §9.3）。
+ *
+ * 这是 Trait 层：每假人标一次、静态，兼作每日漂移的**重力中心**（回弹目标）。
+ * `drifts: false` 的两维（H 诚实-谦逊 / C 尽责性）灰显并注明"不参与每日漂移"——
+ * 它们在闲聊文本里不可观测，强行打分只会变噪声（§4.1）。Q3 裁定：露出来，
+ * 但要说清楚它不参与漂移，否则用户会以为坐标残缺。
+ */
+function TraitSliders({
+  defs,
+  value,
+  onChange,
+}: {
+  defs: TraitDimDef[]
+  value: TraitBaseline
+  onChange: (next: TraitBaseline) => void
+}) {
+  return (
+    <div style={{ marginTop: 6 }}>
+      {defs.map(d => (
+        <div key={d.key} style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '5px 0', opacity: d.drifts ? 1 : 0.55 }} title={d.hint}>
+          <div style={{ width: 72, flex: 'none', fontSize: 13 }}>
+            {d.label}
+          </div>
+          <input
+            type="range"
+            min={-100}
+            max={100}
+            step={5}
+            value={Math.round((value[d.key] ?? 0) * 100)}
+            onChange={e => onChange({ ...value, [d.key]: Number(e.target.value) / 100 })}
+            style={{ flex: 1 }}
+          />
+          <div style={{ width: 96, flex: 'none', textAlign: 'right', fontSize: 12, color: '#999' }}>
+            {(value[d.key] ?? 0) >= 0 ? '+' : ''}{(value[d.key] ?? 0).toFixed(2)}
+          </div>
+        </div>
+      ))}
+      <div style={{ fontSize: 11, color: '#aaa', marginTop: 4 }}>
+        灰显维度不参与每日漂移（闲聊中不可观测），仅作人格坐标与回弹参考。
+      </div>
+    </div>
+  )
+}
+
 class TabErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null }
   static getDerivedStateFromError(error: Error) {
@@ -89,6 +134,10 @@ export function GolemSettings({ api }: GolemSettingsProps) {
    * 现在改为受控 + state 草稿：值只从 React state 来，不依赖 DOM 结构/类名。
    */
   const [drafts, setDrafts] = useState<Record<string, { core: string; ext: string }>>({})
+  /** HEXACO 六维定义的草稿（受控）。key = instanceId。 */
+  const [traitDrafts, setTraitDrafts] = useState<Record<string, TraitBaseline>>({})
+  /** HEXACO 六维定义（后端下发，避免前端硬编码维度名）。 */
+  const [traitDefs, setTraitDefs] = useState<TraitDimDef[]>([])
   /** 面板内标签页：实例配置 / 内省记录 / 知识记录。 */
   const [tab, setTab] = useState<'config' | 'drift' | 'knowledge'>('config')
 
@@ -105,6 +154,11 @@ export function GolemSettings({ api }: GolemSettingsProps) {
         m.id,
         { core: m.personaCore ?? m.persona ?? '', ext: m.personaExt ?? '' },
       ])))
+      // 未标注 traitBaseline 的实例 → 六维按 0 起步（服务端也是这么降级的）。
+      setTraitDrafts(Object.fromEntries(list.map(m => [
+        m.id,
+        m.traitBaseline ?? { H: 0, E: 0, X: 0, A: 0, C: 0, O: 0 },
+      ])))
     } catch (e) {
       console.error('[GolemSettings] refresh failed:', e)
       setCreateHint('加载失败: ' + String(e))
@@ -114,6 +168,15 @@ export function GolemSettings({ api }: GolemSettingsProps) {
   }, [api])
 
   useEffect(() => { void refresh() }, [refresh])
+
+  // 维度定义只拉一次（静态配置）。
+  useEffect(() => {
+    let alive = true
+    api.getDriftDims()
+      .then(d => { if (alive) setTraitDefs(d.trait) })
+      .catch(e => console.error('[GolemSettings] getDriftDims failed:', e))
+    return () => { alive = false }
+  }, [api])
 
   const onCreate = async () => {
     const id = newId.trim()
@@ -125,25 +188,50 @@ export function GolemSettings({ api }: GolemSettingsProps) {
     } catch (e) { setCreateHint('失败: ' + String(e)) }
   }
 
-  const onSave = async (id: string, core: string, ext: string) => {
+  const onSave = async (id: string, core: string, ext: string, trait: TraitBaseline) => {
     try {
-      const updated = await api.setInstanceMeta(id, { personaCore: core, personaExt: ext })
-      // 写后回读校验：服务端返回的 personaCore/personaExt 必须分别与提交值一致。
+      const updated = await api.setInstanceMeta(id, {
+        personaCore: core,
+        personaExt: ext,
+        traitBaseline: trait,
+      })
+      // 写后回读校验：服务端返回内容必须与提交值一致。
       // 上一版 bug 正是「请求成功但内容为空」——只看 resolve 会误报成功，
       // 所以这里比对内容，不一致就明确报出来而不是显示「已保存」。
+      // traitBaseline 同样要校验：remote schema 漏字段会被 zod 静默 strip
+      // （personaCore/personaExt 就踩过这个坑，见 §8.2）。
       const echoedCore = updated.personaCore ?? ''
       const echoedExt = updated.personaExt ?? ''
-      const ok = echoedCore === core && echoedExt === ext
+      const echoedTrait = JSON.stringify(updated.traitBaseline ?? null)
+      const ok = echoedCore === core && echoedExt === ext && echoedTrait === JSON.stringify(trait)
       setHints(h => ({
         ...h,
         [id]: ok
           ? (core.trim() || ext.trim()
-              ? '已保存（核心 ' + core.length + ' 字 / 扩展 ' + ext.length + ' 字）'
+              ? '已保存（核心 ' + core.length + ' 字 / 扩展 ' + ext.length + ' 字 / 六维坐标）'
               : '已保存（已清空人格）')
           : '⚠ 保存未生效：服务端回读与提交不一致',
       }))
       await refresh()
     } catch (e) { setHints(h => ({ ...h, [id]: '失败: ' + String(e) })) }
+  }
+
+  /** 用 LLM 从核心人设推断 HEXACO 六维（§6.1 路径①）。只由用户点按钮触发。 */
+  const onInferTrait = async (id: string) => {
+    setHints(h => ({ ...h, [id]: '推断中…' }))
+    try {
+      const updated = await api.inferTraitBaseline(id)
+      const t = updated.traitBaseline
+      setHints(h => ({
+        ...h,
+        [id]: t
+          ? '已推断：' + (['H', 'E', 'X', 'A', 'C', 'O'] as const)
+              .map(k => k + ' ' + (t[k] >= 0 ? '+' : '') + t[k].toFixed(2))
+              .join(' · ')
+          : '⚠ 推断未返回坐标',
+      }))
+      await refresh()
+    } catch (e) { setHints(h => ({ ...h, [id]: '推断失败: ' + String(e) })) }
   }
 
   const onDefault = async (id: string) => {
@@ -243,12 +331,39 @@ export function GolemSettings({ api }: GolemSettingsProps) {
                   placeholder="扩展设定（如：养一只叫豆豆的狗，雨天情绪低……）"
                   style={textarea}
                 />
+                {traitDefs.length > 0 ? (
+                  <>
+                    <div style={meta}>
+                      HEXACO 人格坐标（Trait 层）：每假人标一次的静态人格基线，
+                      同时是每日漂移的<b>重力中心</b>——累积偏移会被拉回这里。
+                    </div>
+                    <TraitSliders
+                      defs={traitDefs}
+                      value={traitDrafts[m.id] ?? { H: 0, E: 0, X: 0, A: 0, C: 0, O: 0 }}
+                      onChange={next => {
+                        setTraitDrafts(d => ({ ...d, [m.id]: next }))
+                        setHints(h => (h[m.id] ? { ...h, [m.id]: '' } : h))
+                      }}
+                    />
+                  </>
+                ) : null}
                 <div style={{ ...row, marginTop: 8 }}>
                   <button
                     style={buttonGhost}
-                    onClick={() => onSave(m.id, drafts[m.id]?.core ?? '', drafts[m.id]?.ext ?? '')}
+                    onClick={() => onSave(
+                      m.id,
+                      drafts[m.id]?.core ?? '',
+                      drafts[m.id]?.ext ?? '',
+                      traitDrafts[m.id] ?? { H: 0, E: 0, X: 0, A: 0, C: 0, O: 0 },
+                    )}
                     disabled={busy}
                   >保存人格</button>
+                  <button
+                    style={buttonGhost}
+                    onClick={() => void onInferTrait(m.id)}
+                    disabled={busy}
+                    title="用 LLM 读核心人设，推断 HEXACO 六维坐标并写入"
+                  >从人设自动推断</button>
                   <button style={buttonGhost} onClick={() => onDefault(m.id)}>设为默认</button>
                   {!isDef ? (
                     <button style={buttonDanger} onClick={() => onDelete(m.id)}>删除</button>
