@@ -188,9 +188,9 @@ window.__ModuleLoader__.load({
 		}
 		const SKIP_TEXT = {
 			"already-done": (r) => `今日已完成内省（节点 ${r.existingNodeId ?? "?"} 已存在）`,
-			"no-dialogue": "近期无对话 → 跳过（链断档）",
-			"no-llm": "无 LLM → 跳过",
-			"model-empty": "模型返回合法 JSON 但无有效维度 → 平凡日跳过"
+			"no-dialogue": () => "近期无对话 → 跳过（链断档）",
+			"no-llm": () => "无 LLM → 跳过",
+			"model-empty": () => "模型返回合法 JSON 但无有效维度 → 平凡日跳过"
 		};
 		function DriftDashboard({ api, instances }) {
 			const [selected, setSelected] = (0, react.useState)("");
@@ -858,6 +858,57 @@ window.__ModuleLoader__.load({
 			minHeight: 16,
 			marginTop: 6
 		};
+		/**
+		* 标签页级错误边界：隔离单个 tab（内省记录 / 知识记录 / 实例配置）的渲染期异常，
+		* 避免一个 tab 崩溃把整个设置面板（含 tab 按钮行）拖成白屏。
+		*
+		* 历史 bug（2026-09-01）：旧 DriftDashboard 因 SKIP_TEXT 类型误用，在渲染
+		* `no-dialogue` 等 skip 记录时抛 TypeError，又因无 ErrorBoundary 兜底，整棵
+		* GolemSettings 子树卸载 → 点开「内省记录」即全白。此边界让崩溃被收敛到内容区、
+		* 且提供「重试」按钮，而非白屏。
+		*/
+		var TabErrorBoundary = class extends react.Component {
+			state = { error: null };
+			static getDerivedStateFromError(error) {
+				return { error };
+			}
+			render() {
+				if (this.state.error) return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					style: {
+						padding: 16,
+						color: "#c0392b",
+						border: "1px solid #c0392b",
+						borderRadius: 8
+					},
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							style: {
+								fontWeight: 600,
+								marginBottom: 6
+							},
+							children: "该标签页渲染出错"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							style: {
+								fontSize: 13,
+								marginBottom: 10,
+								wordBreak: "break-word"
+							},
+							children: String(this.state.error.message)
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							style: {
+								...button,
+								fontSize: 13
+							},
+							onClick: () => this.setState({ error: null }),
+							children: "重试"
+						})
+					]
+				});
+				return this.props.children;
+			}
+		};
 		function GolemSettings({ api }) {
 			const [metas, setMetas] = (0, react.useState)([]);
 			const [defaultId, setDefaultId] = (0, react.useState)(null);
@@ -990,7 +1041,7 @@ window.__ModuleLoader__.load({
 							children: "知识记录"
 						})
 					]
-				}), tab === "drift" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DriftDashboard, {
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TabErrorBoundary, { children: tab === "drift" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DriftDashboard, {
 					api,
 					instances: metas
 				}) : tab === "knowledge" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(KnowledgeDashboard, {
@@ -1152,7 +1203,7 @@ window.__ModuleLoader__.load({
 							}, m.id);
 						})
 					]
-				})]
+				}) })]
 			});
 		}
 		//#endregion

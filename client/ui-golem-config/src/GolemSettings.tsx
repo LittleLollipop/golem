@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useState, Component, type CSSProperties, type ReactNode } from 'react'
 import type { InstanceMeta } from './types.ts'
 import type { GolemApi } from './golem-api.ts'
 import { DriftDashboard } from './DriftDashboard.tsx'
@@ -42,6 +42,34 @@ const button: CSSProperties = {
 const buttonGhost: CSSProperties = { ...button, background: '#fff', color: '#2b6cb0' }
 const buttonDanger: CSSProperties = { ...button, background: '#c0392b', borderColor: '#c0392b' }
 const hint: CSSProperties = { fontSize: 12, color: '#b06', minHeight: 16, marginTop: 6 }
+
+/**
+ * 标签页级错误边界：隔离单个 tab（内省记录 / 知识记录 / 实例配置）的渲染期异常，
+ * 避免一个 tab 崩溃把整个设置面板（含 tab 按钮行）拖成白屏。
+ *
+ * 历史 bug（2026-09-01）：旧 DriftDashboard 因 SKIP_TEXT 类型误用，在渲染
+ * `no-dialogue` 等 skip 记录时抛 TypeError，又因无 ErrorBoundary 兜底，整棵
+ * GolemSettings 子树卸载 → 点开「内省记录」即全白。此边界让崩溃被收敛到内容区、
+ * 且提供「重试」按钮，而非白屏。
+ */
+class TabErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 16, color: '#c0392b', border: '1px solid #c0392b', borderRadius: 8 }}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>该标签页渲染出错</div>
+          <div style={{ fontSize: 13, marginBottom: 10, wordBreak: 'break-word' }}>{String(this.state.error.message)}</div>
+          <button style={{ ...button, fontSize: 13 }} onClick={() => this.setState({ error: null })}>重试</button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 export function GolemSettings({ api }: GolemSettingsProps) {
   const [metas, setMetas] = useState<InstanceMeta[]>([])
@@ -152,6 +180,7 @@ export function GolemSettings({ api }: GolemSettingsProps) {
         >知识记录</button>
       </div>
 
+      <TabErrorBoundary>
       {tab === 'drift' ? (
         <DriftDashboard api={api} instances={metas} />
       ) : tab === 'knowledge' ? (
@@ -231,6 +260,7 @@ export function GolemSettings({ api }: GolemSettingsProps) {
           })}
     </div>
     )}
+      </TabErrorBoundary>
   </div>
   )
 }

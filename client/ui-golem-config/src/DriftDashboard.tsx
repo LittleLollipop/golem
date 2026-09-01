@@ -56,11 +56,17 @@ function Bar({ name, v }: { name: string; v: number }) {
   )
 }
 
-const SKIP_TEXT: Record<string, string> = {
-  'already-done': (r: DriftExecutionResult) => `今日已完成内省（节点 ${r.existingNodeId ?? '?'} 已存在）`,
-  'no-dialogue': '近期无对话 → 跳过（链断档）',
-  'no-llm': '无 LLM → 跳过',
-  'model-empty': '模型返回合法 JSON 但无有效维度 → 平凡日跳过',
+// ⚠️ 修复（2026-09-01）：旧实现把这里声明为 `Record<string, string>`，但
+// `'already-done'` 的值是函数、`'no-dialogue'` 等是字符串。渲染时统一用
+// `SKIP_TEXT[r.skipReason]?.(r)` 调用——当 skipReason 为 no-dialogue/no-llm/
+// model-empty 时，取到的是**字符串**，对其做可选调用 `?.(r)` 会抛
+// `TypeError: ... is not a function`，导致整个设置面板白屏（无 ErrorBoundary 兜底）。
+// 现统一为「值均为函数 (r) => string」，调用侧 `?.(r)` 对所有 skipReason 都安全。
+const SKIP_TEXT: Record<string, (r: DriftExecutionResult) => string> = {
+  'already-done': (r) => `今日已完成内省（节点 ${r.existingNodeId ?? '?'} 已存在）`,
+  'no-dialogue': () => '近期无对话 → 跳过（链断档）',
+  'no-llm': () => '无 LLM → 跳过',
+  'model-empty': () => '模型返回合法 JSON 但无有效维度 → 平凡日跳过',
 }
 
 export function DriftDashboard({ api, instances }: DriftDashboardProps) {
