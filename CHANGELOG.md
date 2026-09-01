@@ -27,6 +27,9 @@
 - **提示词系统性正向偏置**：实测 08-31 与 09-01 的 dims 向量逐字节相同、累积单调不回头（playfulness 7 天撞满 ±1.0）。修复：把各维度"当前已偏离基线的量"喂给模型，并明确要求无新证据时输出 0、性格不会每天都变；同时切割 `mood`（今日心境）与 `emotionality`（情绪底色）。
 - **维度共线**：为六个维度给出互斥的操作定义并写进提示词（extraversion 测"主不主动"、verbosity 测"说了多少字"），避免同一信号被计两遍。
 
+### Added（工程）
+- **remote 契约测试**（`tests/remote-contract.test.ts`，28 例）：锁死「服务端 `@Remote` 表面」与「客户端 descriptor」的一致性。此前两边**没有任何自动化校验**，而失败模式是静默的：strict zod codec 会**无报错丢弃** schema 里没写的字段（personaCore/personaExt 一次、traitBaseline 又一次）、wire 键按编译后形参名匹配（改名即静默 undefined）、方法集合漂移（调用落到 undefined）。覆盖：方法集合双向相等、每方法 wire 键 == 服务端形参名、所有 codec 必须 strict、InstanceMeta / DriftExecutionResult 全字段在 schema 中、`getDriftDims` 载荷结构与 HEXACO 键枚举。**已做变异验证**（删一个字段 → 4 例红；改一个 wire 键 → 1 例红），确认断言不是装饰。
+
 ## [0.4.1] - 2026-08-30
 
 知识记录可视化、图数据库选型论述，以及 README 文档完善（含「小静」渲染版合并）。

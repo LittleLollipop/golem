@@ -499,12 +499,22 @@ for (const ref of refs) {
 12. `inferTraitBaseline` 对同一段 core persona 连续调用两次 → 结果稳定（幂等，允许 ±0.1 抖动）。
 13. LLM 返回非法 JSON → 回退全 0 基线，不抛异常。
 
-**UI**
+**UI**（14/15 需浏览器点，已由契约测试把失效模式锁死，见下）
 14. `GET /drift-dims` 返回六维定义；前端渲染无裸 key。
 15. meta 保存后回读，`traitBaseline` 未被 schema strip（**上次分层踩过的坑，必须测**）。
 
+> **⚠️ 14/15 的自动化替代**：这两个用例的失效点不在 UI 渲染，而在
+> **strict zod codec 静默丢弃 schema 里没写的字段**——渲染逻辑再对，字段没了也是白搭。
+> 该失效模式已由 `tests/remote-contract.test.ts`（28 例）在**协议层**锁死：
+> `InstanceMeta` 全部字段必须出现在 4 条读取路径的 schema 与 setInstanceMeta 的 patch schema 里，
+> `getDriftDims` 的载荷结构（`{drift, trait}`）与 HEXACO 键枚举（H/E/X/A/C/O）必须精确匹配。
+> **已做变异验证**：从 `instanceMetaSchema` 删掉 `traitBaseline` → 4 条用例立刻红。
+> 也就是说，UI 真正需要人工点的只剩「滑块拖得动、坐标条渲染好看」这类观感项，
+> 字段丢失、wire 键漂移、方法缺失这三类**静默**故障不再依赖人眼。
+
 **回归**
 16. 现有 `tests/persona-drift*.test.ts` 全绿；`dsh-seams.test.ts` 上限仍为 6。
+17. `tests/remote-contract.test.ts` 全绿（协议层契约，跨 remote 改动通用）。
 
 ---
 
