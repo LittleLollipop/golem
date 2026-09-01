@@ -5,9 +5,10 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.5.0] - 2026-09-01
 
-三层人格坐标系重构（性格漂移维度 + 重力回弹），方案见 `docs/persona-drift-dimensions.md`。
+两个主题：**人设分层（core/ext）** 与 **三层人格坐标系（HEXACO 基线 + 重力回弹）**。
+设计文档见 `docs/persona-layering.md` 与 `docs/persona-drift-dimensions.md`。
 
 ⚠️ **破坏性变更**：`FAKEREN_DRIFT_DIMS` 默认值从旧五维
 `openness,warmth,verbosity,playfulness,assertiveness` 换成
@@ -16,19 +17,31 @@
 `schemaVersion: 2` 过滤，旧节点无此字段）——累积偏移归零重启。
 
 ### Added
+
+**人设分层（core / ext）**
+- **常驻 core + 图库 ext 分层**：`persona` 单字段拆成 `personaCore`（身份锚 + 红线 + 维度基线 + 护栏指令，每 session 注入）与 `personaExt`（背景/关系/偏好/事件，seed 进 axolotl 图、靠 recall 拉取）。落地：`resolveCorePersona(core > persona > fallback)` + `PersonaSeed`（幂等 seed，连 `persona-identity` 锚）+ `writePersonaExt`（复用抽取管线）+ `loadPersonaLayerConfig`（env 可调）。**铁律：红线 / 身份 / 基线绝不进 recall 路径。**
+- **设置面板人格双栏编辑**：原单 textarea 改为 core / ext 双栏，保存走 `setInstanceMeta({personaCore, personaExt})` 并回读校验——旧按钮只写 `persona` 单字段，前端无分层入口。
+
+**三层人格坐标系**
 - **Trait 层人格坐标**（`TraitBaseline`）：HEXACO 六维（H/E/X/A/C/O）静态坐标，每假人标一次；兼作每日漂移的**重力中心**（回弹目标）。可用 LLM 从核心人设推断（新增 `inferTraitBaseline` remote），也可在设置面板拖六滑块。
 - **重力回弹**（`revertPull`）：软带（0.4）内弱回弹，超出后系数按偏离量放大 → 即使模型天天给满增量，累积也稳定在基线 ±0.5 附近，不再单调撞边界。回弹目标与回弹量写入 drift 节点 `props.traitTarget` / `props.revertPull`，可审计。
 - **per-dim 单日上限**（`FAKEREN_DRIFT_DIM_CAPS`）：`emotionality` 默认收紧到 0.08（其它维 0.15），避免"今天心情不好"被记成"性格变敏感了"。
 - **维度定义下发**（`getDriftDims` remote）：前端不再硬编码维度名与中文标签，后端为单一真源。
 - **人格坐标面板**：内省记录页新增 HEXACO 六维坐标条（灰点=基线 / 彩条=当前偏移）。H、C 两维**灰显**并注明"仅作人格坐标，不参与每日漂移"——它们在闲聊文本中不可观测，强行打分只会变噪声。
 
+### Changed
+- **每轮 `memory_recall` 上限 3 → 6**：分层后人设 ext 走 recall 路径，3 条不够用（分层前的设定本就在 system prompt 里，不占 recall 额度）。
+- **维度定义改由后端下发**：前端曾把维度名与中文标签写死（`DriftDashboard.tsx`），维度一改 UI 立即对不上（新维度渲染成裸 key）。
+
 ### Fixed
+- **内省记录 tab 白屏**：`SKIP_TEXT` 声明为 `Record<string, string>` 却混放了函数与字符串，调用侧统一写 `SKIP_TEXT[r.skipReason]?.(r)` → 渲染 `no-dialogue` / `no-llm` / `model-empty` 时**对字符串做调用**，抛 `TypeError` 崩掉整个设置面板（实测：王梗梗 idle 期间攒了 21 条 `no-dialogue` 记录，点开即白屏）。修复：值统一为函数；并加 `TabErrorBoundary` 隔离单个 tab，渲染异常不再拖垮整页且无提示。
 - **evidence 悬空边**（实测缺陷）：提示词要求节点 id 却没把 id 喂给模型 → 模型只能编，导致 `relates` 边 100% 指向不存在的节点，而 UI 上"evidence 边 N"的计数却在涨（追溯能力实际为 0）。修复：对话/记忆上下文带上 `[节点 id]`、evidence 改为 `{nodeId, quote}` 结构、**建边前校验节点存在**，悬空的记 `evidenceSkipped` 而不建边。
 - **提示词系统性正向偏置**：实测 08-31 与 09-01 的 dims 向量逐字节相同、累积单调不回头（playfulness 7 天撞满 ±1.0）。修复：把各维度"当前已偏离基线的量"喂给模型，并明确要求无新证据时输出 0、性格不会每天都变；同时切割 `mood`（今日心境）与 `emotionality`（情绪底色）。
 - **维度共线**：为六个维度给出互斥的操作定义并写进提示词（extraversion 测"主不主动"、verbosity 测"说了多少字"），避免同一信号被计两遍。
 
 ### Added（工程）
 - **remote 契约测试**（`tests/remote-contract.test.ts`，28 例）：锁死「服务端 `@Remote` 表面」与「客户端 descriptor」的一致性。此前两边**没有任何自动化校验**，而失败模式是静默的：strict zod codec 会**无报错丢弃** schema 里没写的字段（personaCore/personaExt 一次、traitBaseline 又一次）、wire 键按编译后形参名匹配（改名即静默 undefined）、方法集合漂移（调用落到 undefined）。覆盖：方法集合双向相等、每方法 wire 键 == 服务端形参名、所有 codec 必须 strict、InstanceMeta / DriftExecutionResult 全字段在 schema 中、`getDriftDims` 载荷结构与 HEXACO 键枚举。**已做变异验证**（删一个字段 → 4 例红；改一个 wire 键 → 1 例红），确认断言不是装饰。
+- **人设分层测试**（`tests/persona-layering.test.ts`，7 例）：core/ext 解析优先级、seed 幂等、ext 写入走抽取管线、config env 覆盖。
 
 ## [0.4.1] - 2026-08-30
 
