@@ -20,8 +20,10 @@ export function parseLeakConfig(env = process.env) {
     driftLimit: num("FAKEREN_LEAK_DRIFT", 3),
     ambientLimit: num("FAKEREN_LEAK_AMBIENT", 2),
     l05Limit: num("FAKEREN_LEAK_L05", 2),
+    l05FreshDays: num("FAKEREN_LEAK_L05_FRESH_DAYS", 1),
     triggerProbability: Number.isFinite(tp) && tp >= 0 && tp <= 1 ? tp : 1,
-    minValence: num("FAKEREN_LEAK_MIN_VALENCE", 0),
+    // FAKEREN_LEAK_MIN_VALENCE removed in v0.6.0 — dead config: cross-domain
+    // edges carry no valence, so the floor never filtered anything.
   };
 }
 

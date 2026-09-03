@@ -5,6 +5,45 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+两个主题：**漂移种子池去重对称化**。诊断与全部实测数据见 `docs/leak-seed-pool.md`。
+
+⚠️ **破坏性变更**：移除 `FAKEREN_LEAK_MIN_VALENCE` / `minValence`。
+该门槛从未生效过——跨域边上没有 `valence` 字段，`props.valence` 全为 `None`，
+`minValence` 默认 0 且门槛恒不触发，留着只会误导下一次排查。
+
+### Fixed
+- **旧知识每轮刷屏（用户报告："始终在漏相同的东西"）**：`crossDomain` 通道
+  **完全没有去重**，sidecar 又按插入序（=时间正序）返回，`slice(0,3)` 让最老的
+  3 条边拿到永久席位 —— 实测普雷斯顿 / 科索沃各漏 **20/40 轮**。改为冷却闸门
+  （10 轮或 30 分钟，取先到）+ 无放回加权轮转。
+- **新知识一次即死（用户报告："没把最近新学的漏出来"）**：L0.5 的
+  `sessionLeaked` 是**永久**排除 —— 楠塔哈拉 / 忙哥帖木儿 / 凯耶达尔各漏 1 次后，
+  分别静默 67 / 17 / 3 轮。知识因此再也进不了假人的嘴 → 抽取器扫不到 → 入不了图 →
+  永远进不了唯一无去重的 crossDomain，自我锁死。改为 **6h 冷却窗口**。
+  ⚠️ 冷却不能取 24h：`l05FreshDays=1`，24h 冷却套在 24h 新鲜窗口里等价于
+  "每条知识只漏一次"，是**空修复**（已加用例 `2b` 守卫）。
+- **往昔回放每轮做一次注定失败的调用**：live 会话下 `loadSessionEvents` 必然
+  `catch → []`，`gather` 却每轮调它。改为显式跳过当前会话（只回放已关闭会话），
+  并把跳过数记进 `histSkipped` —— 日志里的 `hist=0` 现在能被解释，而不是看起来
+  像"这个人没有过去"。
+
+### Added
+- **`LeakCooldown`（`src/leak/cooldown.ts`）**：两条通道共用的冷却实现，
+  由 `DriftChannel` 注入 `L05Trajectory`。同一条要求（2026-08-29「同一个会话里
+  相同的记忆不需要反复的漏」）过去在 crossDomain 上**完全缺失**、在 L0.5 上
+  **过度实现**（一次即死）—— 共用一张表是防止它再次漂移的结构性保证。
+- **加权轮转**：`weight = edge.weight × (1 + 静默轮数/冷却轮数) × rng()`。
+  原计划的 `exp(-(now-edge.createdAt)/τ)` 算不出来（边上无时间戳，且不动
+  sidecar 存储结构），改用"静默了多少轮"——效果一致且更强：直接奖励没漏过的边，
+  而新知识进池后正是没漏过的边。
+- **溯源串可读化**：`crossDomain by |valence| rank N` →
+  `crossDomain weighted-rotate (w=0.42, idle=new)`（rank 恒等于插入顺序、
+  valence 恒为 0，原串是纯噪声）。
+- 19 条回归用例（`tests/leak-cooldown.test.ts`），全部确定性（RNG 与时钟均可注入）。
+  变异验证：跨域冷却归零 → 5 例红；L0.5 冷却改 24h → 4 例红；去掉 live 过滤 → 3 例红。
+
 ## [0.5.0] - 2026-09-01
 
 两个主题：**人设分层（core/ext）** 与 **三层人格坐标系（HEXACO 基线 + 重力回弹）**。

@@ -12,6 +12,11 @@ import type { LearnedFact } from "./types.js";
 import type { SeedProvenance } from "../types.js";
 import type { DailyKnowledgeTracker } from "./daily-tracker.js";
 import type { BackgroundTaskLog } from "../scheduler/background-log.js";
+import {
+  L05_COOLDOWN,
+  LeakCooldown,
+  type CooldownPolicy,
+} from "../leak/cooldown.js";
 
 export interface L05Seed {
   observationText: string;
@@ -23,13 +28,22 @@ export interface L05Seed {
 
 export class L05Trajectory {
   /**
-   * Per-session dedup of leaked learned facts. Keyed by sessionId so the SAME
-   * fact is surfaced at most ONCE per conversation (user 2026-08-29: "同一个
-   * 会话里相同的记忆不需要反复的漏"). A new conversation (new sessionId) starts
-   * fresh, so the fact can remind once in a later talk — but never repeats
-   * within the same session.
+   * Cooldown table for leaked learned facts (user 2026-08-29: "同一个会话里
+   * 相同的记忆不需要反复的漏").
+   *
+   * ⚠️ This used to be a per-session Set that *permanently* excluded a fact
+   * after its first leak. That overshot the requirement and locked new
+   * knowledge out of the leak entirely: a fact leaked once at turn N and then
+   * never again for the remaining 67 turns of the session, so the persona
+   * stopped mentioning it, the extractor never saw it, and it could never
+   * reach the graph (docs/leak-seed-pool.md §2.2). Suppression must be a
+   * *window*, not a life sentence — hence the shared cooldown (6h; see
+   * L05_COOLDOWN for why it must stay well below `freshDays`).
+   *
+   * DriftChannel injects its own instance so both sub-channels cool down
+   * through the same code path (§4.1).
    */
-  private readonly sessionLeaked = new Map<string, Set<string>>();
+  private cooldown = new LeakCooldown();
 
   constructor(
     private readonly tracker: DailyKnowledgeTracker,
@@ -38,7 +52,22 @@ export class L05Trajectory {
     /** Max age (days) a learned fact stays an ambient drift seed. Older facts
      *  drop out of the auto-leak but remain in the recall graph. Default 1. */
     private readonly freshDays = 1,
+    private readonly cooldownPolicy: CooldownPolicy = L05_COOLDOWN,
   ) {}
+
+  /**
+   * Share one cooldown table with the rest of the drift channel. Idempotent —
+   * calling it twice with the same instance is a no-op; calling it with a
+   * different instance replaces the table (kept permissive for tests).
+   */
+  attachCooldown(cd: LeakCooldown): void {
+    this.cooldown = cd;
+  }
+
+  /** Test seam: inspect the shared instance (asserts cross-channel symmetry). */
+  get cooldownTable(): LeakCooldown {
+    return this.cooldown;
+  }
 
   /**
    * Idle tick: ensure today's two learning slots are attempted for this instance.
@@ -63,7 +92,9 @@ export class L05Trajectory {
    *
    * Two gates keep it from becoming interference:
    *  1. freshness: only facts learned within `freshDays` are ambient seeds.
-   *  2. per-session dedup: a fact leaks at most once per sessionId.
+   *  2. cooldown: a fact is not re-surfaced within the cooldown window
+   *     (default 24h, per sessionId). It CAN resurface afterwards — unlike the
+   *     old permanent per-session exclusion.
    */
   seedCandidates(
     instanceId: string,
@@ -72,7 +103,9 @@ export class L05Trajectory {
     now: number = Date.now(),
   ): L05Seed[] {
     const freshMs = this.freshDays * 24 * 3600 * 1000;
-    const alreadyLeaked = sessionId ? this.sessionLeaked.get(sessionId) : undefined;
+    // scope: per-conversation. No sessionId → no suppression (pre-existing
+    // semantics for callers that do not track a conversation, e.g. tests).
+    const scope = sessionId;
     // Only *learned* content leaks into drift; status records (empty/junk/error)
     // are audited but never surfaced.
     const facts = this.tracker
@@ -80,23 +113,13 @@ export class L05Trajectory {
       .filter((f) => f.status === "learned")
       // freshness gate: a learned fact is "today's trajectory" only while fresh
       .filter((f) => now - f.learnedAt <= freshMs)
-      // per-session dedup: don't re-leak a fact already surfaced this session
-      .filter((f) => !alreadyLeaked?.has(f.id))
+      // cooldown gate: suppressed while inside the window, released after it
+      .filter((f) => !scope || this.cooldown.available(scope, f.id, this.cooldownPolicy, now))
       .slice(0, limit);
 
-    // Record as leaked in this session so later turns skip it (dedup).
-    if (sessionId && facts.length > 0) {
-      let set = this.sessionLeaked.get(sessionId);
-      if (!set) {
-        set = new Set();
-        this.sessionLeaked.set(sessionId, set);
-        // bound the map across many sessions in a long-running process
-        if (this.sessionLeaked.size > 256) {
-          const eldest = this.sessionLeaked.keys().next().value;
-          if (typeof eldest === "string") this.sessionLeaked.delete(eldest);
-        }
-      }
-      for (const f of facts) set.add(f.id);
+    // Arm the cooldown so later turns inside the window skip it.
+    if (scope && facts.length > 0) {
+      for (const f of facts) this.cooldown.take(scope, f.id, now);
     }
 
     return facts.map((f) => ({

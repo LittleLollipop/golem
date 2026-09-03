@@ -60,7 +60,7 @@ describe("inspect CLI core (req_inspect_cli)", () => {
         ambientLimit: 2,
         l05Limit: 2,
         triggerProbability: 1,
-        minValence: 0,
+        l05FreshDays: 1,
       });
     });
 
@@ -71,14 +71,12 @@ describe("inspect CLI core (req_inspect_cli)", () => {
         FAKEREN_LEAK_AMBIENT: "1",
         FAKEREN_LEAK_L05: "3",
         FAKEREN_LEAK_TRIGGER_P: "0.5",
-        FAKEREN_LEAK_MIN_VALENCE: "0.2",
       });
       expect(cfg.maxSeeds).toBe(5);
       expect(cfg.driftLimit).toBe(4);
       expect(cfg.ambientLimit).toBe(1);
       expect(cfg.l05Limit).toBe(3);
       expect(cfg.triggerProbability).toBe(0.5);
-      expect(cfg.minValence).toBe(0.2);
     });
 
     it("clamps out-of-range trigger probability back to 1", () => {

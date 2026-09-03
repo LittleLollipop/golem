@@ -37,6 +37,7 @@ import { LlmGrader } from "./agent/llm-grader.js";
 import type { TaskClassifier } from "./agent/grader.js";
 import { GolemAgent } from "./agent/golem-agent.js";
 import { LeakPostFilter } from "./leak/post-filter.js";
+import { LeakCooldown } from "./leak/cooldown.js";
 import { loadLeakConfig, loadPersonaDriftConfig } from "./leak/config.js";
 import { PersonaDriftService, resolveCorePersona } from "./agent/persona-drift.js";
 import { PersonaSeed } from "./memory/persona-seed.js";
@@ -160,7 +161,21 @@ export function apply(ctx: DshContext, config: GolemConfig = {}): void {
     `[golem] L0.5 = dual-track (random: wikipedia/random + purposeful: ${planner ? "model-planned[wiki/news/social/web]" : "no-LLM → 目的轨不占槽，key 就绪后自动重试"})`,
   );
 
-  const drift = new DriftChannel(reader, dsh, registry, ambientSource.getBuffer(), l05, leakCfg, schedulerLog);
+  // One cooldown table shared by the cross-domain pool and the L0.5 knowledge
+  // trajectory. The 2026-08-29 "同一会话里相同记忆不要反复漏" requirement used to
+  // be missing on the first and infinite on the second — sharing one instance is
+  // what stops them drifting apart again (docs/leak-seed-pool.md §4.1).
+  const drift = new DriftChannel(
+    reader,
+    dsh,
+    registry,
+    ambientSource.getBuffer(),
+    l05,
+    leakCfg,
+    schedulerLog,
+    new LeakCooldown(),
+  );
+  console.log("[golem] drift cooldown = crossDomain 10 轮/30 分钟, L0.5 24h (shared)");
   const recall = new RecallChannel(new GraphRecallSource(reader));
   const situational = new SituationalChannel();
 

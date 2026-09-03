@@ -13,7 +13,10 @@ import * as path from "path";
  *   FAKEREN_LEAK_AMBIENT     ambient stream seed count
  *   FAKEREN_LEAK_L05         L0.5 knowledge-trajectory seed count
  *   FAKEREN_LEAK_TRIGGER_P   trigger probability [0..1] of injecting ANY leakage
- *   FAKEREN_LEAK_MIN_VALENCE minimum AI-self valence for a drift seed to survive
+ *
+ * ⚠️ FAKEREN_LEAK_MIN_VALENCE was REMOVED in v0.6.0 (docs/leak-seed-pool.md
+ * §4.2): `props.valence` is never written on cross-domain edges, so the floor
+ * was dead config that misled every investigation into the leak pool.
  */
 
 export interface LeakConfig {
@@ -32,8 +35,6 @@ export interface LeakConfig {
   l05FreshDays: number;
   /** probability [0..1] of injecting any leakage at all (trigger probability) */
   triggerProbability: number;
-  /** minimum valence weight for a drift seed to survive (0 = no filter) */
-  minValence: number;
 }
 
 function num(env: string | undefined, fallback: number): number {
@@ -52,7 +53,6 @@ export function loadLeakConfig(): LeakConfig {
       const v = Number(process.env.FAKEREN_LEAK_TRIGGER_P);
       return Number.isFinite(v) && v >= 0 && v <= 1 ? v : 1;
     })(),
-    minValence: num(process.env.FAKEREN_LEAK_MIN_VALENCE, 0),
   };
 }
 
