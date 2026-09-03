@@ -37,7 +37,7 @@ import { LlmGrader } from "./agent/llm-grader.js";
 import type { TaskClassifier } from "./agent/grader.js";
 import { GolemAgent } from "./agent/golem-agent.js";
 import { LeakPostFilter } from "./leak/post-filter.js";
-import { LeakCooldown } from "./leak/cooldown.js";
+import { LeakCooldown, CROSS_DOMAIN_COOLDOWN, L05_COOLDOWN } from "./leak/cooldown.js";
 import { loadLeakConfig, loadPersonaDriftConfig } from "./leak/config.js";
 import { PersonaDriftService, resolveCorePersona } from "./agent/persona-drift.js";
 import { PersonaSeed } from "./memory/persona-seed.js";
@@ -175,7 +175,11 @@ export function apply(ctx: DshContext, config: GolemConfig = {}): void {
     schedulerLog,
     new LeakCooldown(),
   );
-  console.log("[golem] drift cooldown = crossDomain 10 轮/30 分钟, L0.5 24h (shared)");
+  // 从常量动态渲染，避免日志与 cooldown.ts 漂移（曾硬编码 "24h"，而实际是 6h）
+  const xdTurns = CROSS_DOMAIN_COOLDOWN.turns ?? "∞";
+  const xdMin = CROSS_DOMAIN_COOLDOWN.ms ? `${CROSS_DOMAIN_COOLDOWN.ms / 60000} 分钟` : "∞";
+  const l05h = L05_COOLDOWN.ms ? `${L05_COOLDOWN.ms / 3600_000}h` : "∞";
+  console.log(`[golem] drift cooldown = crossDomain ${xdTurns} 轮/${xdMin}, L0.5 ${l05h} (shared)`);
   const recall = new RecallChannel(new GraphRecallSource(reader));
   const situational = new SituationalChannel();
 
