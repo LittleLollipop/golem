@@ -44,8 +44,8 @@ const cfg = (over: Partial<LeakConfig> = {}): LeakConfig => ({
 const noPersist = { loadSessionEvents: async () => [] } as any;
 const noRegistry = { sessionsOf: async () => [] } as any;
 
-function edge(from: string, to: string, weight = 1): GraphEdge {
-  return { from, to, kind: "crossdomain_weak", instanceId: "i", weight } as GraphEdge;
+function edge(from: string, to: string, weight = 1, sessionId?: string): GraphEdge {
+  return { from, to, kind: "crossdomain_weak", instanceId: "i", weight, sessionId } as GraphEdge;
 }
 
 /** Deterministic RNG: cycles through a fixed script (repeatable "randomness"). */
@@ -313,6 +313,109 @@ describe("跨域轮转与溯源 (docs/leak-seed-pool.md §4.2)", () => {
     // 死配置已删：env 与 config 类型都不再有 minValence
     const { loadLeakConfig } = await import("../src/leak/config.js");
     expect(Object.keys(loadLeakConfig())).not.toContain("minValence");
+  });
+});
+
+// ── 3.5 两套机制的池子边界 (docs §4.3，用户 2026-09-03 定稿) ──────────────
+//
+// 用户原话：「所有图库里的东西都要漏，但是有两套不同的机制，一套是针对近期
+// 知识的，还有一套是针对所有图库节点的，但是这两套机制都需要遵循不能重复漏，
+// 第二套机制还需要去除掉本次会话中新加的节点」。
+//
+// 所以判据是「这条边是哪个会话产出的」，不是「这条边语义上像不像跨域」。
+// 原 §4.3（让抽取器停止产出 crossdomain_weak、池子 69→12）按此否决。
+
+describe("图库池剔除本会话新增的边 (docs §4.3)", () => {
+  it("用例17 本会话产出的边不漏：40 轮里一次都不出现", async () => {
+    const pool = [
+      edge("本会话聊到的A", "本会话聊到的B", 0.9, "sess-live"),
+      edge("本会话聊到的C", "本会话聊到的D", 0.8, "sess-live"),
+      edge("旧边E", "旧边F", 0.7, "sess-old"),
+      ...Array.from({ length: 7 }, (_, i) => edge(`旧${i}A`, `旧${i}B`, 0.5, "sess-old")),
+    ];
+    const ch = new DriftChannel(
+      { crossDomain: async () => pool } as any, noPersist, noRegistry, undefined, undefined,
+      cfg({ driftLimit: 3 }), undefined, new LeakCooldown(), scripted([0.1, 0.5, 0.9, 0.3, 0.7]),
+    );
+    for (let turn = 0; turn < 40; turn++) {
+      const out = await ch.gather("instA", undefined, "sess-live", T0 + turn * 60_000);
+      for (const c of out.filter((x) => x.content.startsWith("[跨域联想]"))) {
+        expect(c.content).not.toContain("本会话聊到的");
+      }
+    }
+  });
+
+  it("用例18 其他会话产出的边照常漏（去除的是本会话，不是全部新边）", async () => {
+    const reader = { crossDomain: async () => [edge("旧边E", "旧边F", 0.9, "sess-old")] } as any;
+    const ch = new DriftChannel(
+      reader, noPersist, noRegistry, undefined, undefined,
+      cfg({ driftLimit: 3 }), undefined, new LeakCooldown(), scripted([0.5]),
+    );
+    const out = await ch.gather("instA", undefined, "sess-live", T0);
+    expect(out.filter((c) => c.content.startsWith("[跨域联想]"))).toHaveLength(1);
+  });
+
+  it("用例19 无 sessionId 的边 = 沉淀历史，照常漏（consolidate 元簇 / 人设漂移 / 老数据）", async () => {
+    // 这是最关键的一条回归：缺失字段若被当成"本会话"，整个通道会静默。
+    // 实测 69 条边里 12 条是 consolidate 元簇、全部 69 条都是加字段之前写的。
+    const reader = { crossDomain: async () => [edge("元簇", "成员A", 0.9), edge("老边", "老边B", 0.8)] } as any;
+    const ch = new DriftChannel(
+      reader, noPersist, noRegistry, undefined, undefined,
+      cfg({ driftLimit: 2 }), undefined, new LeakCooldown(), scripted([0.5]),
+    );
+    const out = await ch.gather("instA", undefined, "sess-live", T0);
+    expect(out.filter((c) => c.content.startsWith("[跨域联想]"))).toHaveLength(2);
+  });
+
+  it("用例19b 换会话后，上一个会话的边变成可漏（漏的目标是以前的会话加的）", async () => {
+    const reader = { crossDomain: async () => [edge("上一会话的边A", "上一会话的边B", 0.9, "sess-1")] } as any;
+    const shared = new LeakCooldown();
+    // 同一个 process、两个会话连着开：sess-1 里这条边属于自己 → 不漏
+    const ch1 = new DriftChannel(
+      reader, noPersist, noRegistry, undefined, undefined,
+      cfg({ driftLimit: 3 }), undefined, shared, scripted([0.5]),
+    );
+    expect(
+      (await ch1.gather("instA", undefined, "sess-1", T0)).filter((c) => c.content.startsWith("[跨域联想]")),
+    ).toHaveLength(0);
+    // sess-2 里它就是"以前的会话加的" → 可漏
+    const ch2 = new DriftChannel(
+      reader, noPersist, noRegistry, undefined, undefined,
+      cfg({ driftLimit: 3 }), undefined, shared, scripted([0.5]),
+    );
+    expect(
+      (await ch2.gather("instA", undefined, "sess-2", T0 + 60_000)).filter((c) => c.content.startsWith("[跨域联想]")),
+    ).toHaveLength(1);
+  });
+
+  it("用例19c 剔除数进后台日志，让 xd 变少这件事可被解释", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "golem-xd-"));
+    const log = new BackgroundTaskLog(path.join(dir, "scheduler.jsonl"));
+    const reader = {
+      crossDomain: async () => [
+        edge("本会话A", "本会话B", 0.9, "sess-live"),
+        edge("旧边E", "旧边F", 0.8, "sess-old"),
+      ],
+    } as any;
+    const ch = new DriftChannel(
+      reader, noPersist, noRegistry, undefined, undefined,
+      cfg({ driftLimit: 3 }), log, new LeakCooldown(), scripted([0.5]),
+    );
+    await ch.gather("instA", undefined, "sess-live", T0);
+    const evs = log.read(10).filter((e) => e.kind === "drift");
+    expect(evs).toHaveLength(1);
+    expect((evs[0].detail as any).bySource).toMatchObject({ xd: 1, xdSameSession: 1 });
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("用例19d 不传 sessionId 时不做排除（CLI / inspect 场景保持全量可见）", async () => {
+    const reader = { crossDomain: async () => [edge("A", "B", 0.9, "sess-anything")] } as any;
+    const ch = new DriftChannel(
+      reader, noPersist, noRegistry, undefined, undefined,
+      cfg({ driftLimit: 3 }), undefined, new LeakCooldown(), scripted([0.5]),
+    );
+    const out = await ch.gather("instA", undefined, undefined, T0);
+    expect(out.filter((c) => c.content.startsWith("[跨域联想]"))).toHaveLength(1);
   });
 });
 

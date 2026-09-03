@@ -24,6 +24,14 @@ export interface TurnInput {
   userText: string;
   assistantText: string;
   timestamp?: number;
+  /**
+   * Conversation this turn belongs to. Stamped onto every extracted EDGE so the
+   * drift pool can tell "settled history" from "what we just talked about" —
+   * the golem should not leak a turn's own content back as a reminiscence
+   * (docs/leak-seed-pool.md §4.3). Nodes are unaffected: they already carry
+   * `timestamp`, and a node may be re-mentioned across sessions.
+   */
+  sessionId?: string;
 }
 
 export interface RawNode {
@@ -155,6 +163,8 @@ export class MemoryWriter {
         instanceId: input.instanceId,
         props: e.props,
         weight: 1.0,
+        // Undefined for persona seeds / background writes ⇒ "settled history".
+        sessionId: input.sessionId,
       };
       await this.store.addEdge(edge);
     }

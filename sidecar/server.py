@@ -117,6 +117,11 @@ class InstanceGraph:
         self._edges.append({
             "from": e["from"], "to": e["to"], "kind": e["kind"], "instanceId": e["instanceId"],
             "weight": w, "props_json": json.dumps(e.get("props", {}), ensure_ascii=False),
+            # Which conversation produced this edge. Absent for consolidation
+            # meta-clusters, persona drift, persona seeds, and every edge written
+            # before this field existed — absence means "settled history", which
+            # is the set the drift pool may leak (docs/leak-seed-pool.md §4.3).
+            "sessionId": e.get("sessionId"),
         })
         self._save_edges()
         self._g.save()
@@ -189,11 +194,18 @@ class InstanceGraph:
         }
 
     def cross_domain(self, instance_id, limit=200):
-        return [
-            {"from": e["from"], "to": e["to"], "kind": e["kind"], "instanceId": e["instanceId"],
-             "weight": e.get("weight", 1.0), "props": json.loads(e.get("props_json", "{}"))}
-            for e in self._edges if e["kind"] == "crossdomain_weak" and e["instanceId"] == instance_id
-        ][:limit]
+        out = []
+        for e in self._edges:
+            if e["kind"] != "crossdomain_weak" or e["instanceId"] != instance_id:
+                continue
+            row = {"from": e["from"], "to": e["to"], "kind": e["kind"], "instanceId": e["instanceId"],
+                   "weight": e.get("weight", 1.0), "props": json.loads(e.get("props_json", "{}"))}
+            # Omitted (not null) when unset, so the TS side sees `undefined` —
+            # "no session stamp" must not be confusable with "some session".
+            if e.get("sessionId") is not None:
+                row["sessionId"] = e["sessionId"]
+            out.append(row)
+        return out[:limit]
 
     def neighbors(self, node_id: str, instance_id: str):
         """1-hop neighbors of a node (for 2-hop recall expansion)."""

@@ -218,6 +218,14 @@ export interface GraphEdge {
   instanceId: InstanceId;
   props?: Record<string, unknown>;
   weight?: number;
+  /**
+   * Which conversation produced this edge. Set only for edges extracted from a
+   * live dialogue turn; ABSENT for everything else — consolidation meta-clusters,
+   * persona drift, persona seeds, and all edges written before this field
+   * existed. Absence therefore means "settled history", which is exactly the
+   * set the drift pool is allowed to leak (docs/leak-seed-pool.md §4.3).
+   */
+  sessionId?: string;
 }
 
 export interface ConsolidationReport {

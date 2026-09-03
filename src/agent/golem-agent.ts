@@ -188,6 +188,9 @@ export class GolemAgent {
         userText: String(user.payload.text),
         assistantText: String(assistant.payload.text),
         timestamp: user.timestamp,
+        // Stamps extracted edges so the drift pool can skip this session's own
+        // edges (docs/leak-seed-pool.md §4.3).
+        sessionId,
       });
     }
   }

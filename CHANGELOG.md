@@ -28,6 +28,13 @@
   `catch → []`，`gather` 却每轮调它。改为显式跳过当前会话（只回放已关闭会话），
   并把跳过数记进 `histSkipped` —— 日志里的 `hist=0` 现在能被解释，而不是看起来
   像"这个人没有过去"。
+- **本会话刚聊过的边被当成"想起来"漏回来**（Q1 结论）：`crossdomain_weak` 这个
+  类型本身可以漏，但漏的目标是**以前会话加的节点**——本会话刚抽出来的边应被排除。
+  给 `GraphEdge` 加 `sessionId?`（`golem-agent.syncLatestTurn` 本就持有、只是没往下
+  传），sidecar 存进 `_edges` manifest 并透出（缺失时整个 key 不输出，而非 `null`，
+  避免"没标记"被误读成"某会话"），`gather` 里 `edge.sessionId === 当前 sessionId →
+  skip`，剔除数记 `xdSameSession`。实测本次会话新增只占 6/69≈8.7%，所以它治的是
+  **语义正确性**而非刷屏（刷屏靠冷却+轮转）——两者作用面不同，不能互相替代。
 
 ### Added
 - **`LeakCooldown`（`src/leak/cooldown.ts`）**：两条通道共用的冷却实现，
@@ -41,8 +48,10 @@
 - **溯源串可读化**：`crossDomain by |valence| rank N` →
   `crossDomain weighted-rotate (w=0.42, idle=new)`（rank 恒等于插入顺序、
   valence 恒为 0，原串是纯噪声）。
-- 19 条回归用例（`tests/leak-cooldown.test.ts`），全部确定性（RNG 与时钟均可注入）。
-  变异验证：跨域冷却归零 → 5 例红；L0.5 冷却改 24h → 4 例红；去掉 live 过滤 → 3 例红。
+- 25 条回归用例（`tests/leak-cooldown.test.ts`），全部确定性（RNG 与时钟均可注入）。
+  另加 `tests/writer.test.ts` 2 条契约用例，锁死 `sessionId` 从 `TurnInput` 一路透传到边。
+  变异验证：跨域冷却归零 → 5 例红；L0.5 冷却改 24h → 4 例红；去掉 live 过滤 → 3 例红；
+  取消会话排除 → 3 例红；缺失字段反转为排除 → 8 例红。
 
 ## [0.5.0] - 2026-09-01
 

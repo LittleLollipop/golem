@@ -51,6 +51,27 @@ describe("MemoryWriter", () => {
     }
   });
 
+  // 契约测试：漂移池靠边的 sessionId 区分"本会话刚聊的"与"沉淀历史"
+  // （docs/leak-seed-pool.md §4.3）。链路断掉的话通道会静默漏回当前会话的内容，
+  // 而不是报错 —— 所以这里必须显式钉住。
+  it("stamps sessionId onto extracted edges when the turn carries one", async () => {
+    const store = new FakeGraphStore();
+    const w = new MemoryWriter(store);
+    await w.writeTurn({
+      instanceId: "i1", userText: '提到"Alpha"', assistantText: "ok",
+      timestamp: 1000, sessionId: "sess-42",
+    });
+    expect(store.allEdges.length).toBeGreaterThan(0);
+    for (const e of store.allEdges) expect(e.sessionId).toBe("sess-42");
+  });
+
+  it("leaves sessionId undefined on background writes (persona seeds / drift ⇒ 沉淀历史)", async () => {
+    const store = new FakeGraphStore();
+    const w = new MemoryWriter(store);
+    await w.writeTurn({ instanceId: "i1", userText: '提到"Alpha"', assistantText: "ok", timestamp: 1000 });
+    for (const e of store.allEdges) expect(e.sessionId).toBeUndefined();
+  });
+
   it("HeuristicExtractor extracts Event + quoted/capitalized entities", () => {
     const ex = new HeuristicExtractor();
     const { nodes, edges } = ex.extract({ instanceId: "i", userText: '聊了"项目" 和 BetaGamma', assistantText: "x", timestamp: 5 });

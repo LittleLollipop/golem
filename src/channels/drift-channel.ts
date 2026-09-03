@@ -68,7 +68,7 @@ export class DriftChannel {
     this.state = "gathering";
     const out: ChannelContribution[] = [];
     // 按源分段计数，供后台调度日志记录"漂了什么"（req_background_task_log）
-    const counts = { xd: 0, hist: 0, histSkipped: 0, ambient: 0, l05: 0 };
+    const counts = { xd: 0, xdSameSession: 0, hist: 0, histSkipped: 0, ambient: 0, l05: 0 };
 
     // 触发概率 (req_leak_rate_tunable): 以概率 triggerProbability 决定是否注入任何渗漏。
     if (this.leak.triggerProbability < 1 && Math.random() > this.leak.triggerProbability) {
@@ -83,15 +83,28 @@ export class DriftChannel {
 
     // (1) Cross-domain weak edges — the L0 drift seed pool.
     //
-    // Two defects fixed here (docs/leak-seed-pool.md §2):
+    // Three defects fixed here (docs/leak-seed-pool.md §2 / §4.3):
     //   a) NO dedup at all — the pool was re-gathered every turn and sidecar
     //      returns it in insertion order, so `slice(0, 3)` handed the same 3
     //      oldest edges a permanent seat (普雷斯顿/科索沃各漏 20/40 轮).
     //   b) insertion order = chronological, so new edges never got a turn.
-    // Fix: cooldown gate + weighted rotation (starvation-weighted sampling).
+    //   c) the pool included edges THIS session just produced — leaking back
+    //      what we are currently talking about as if it were a reminiscence.
+    // Fix: cooldown gate + weighted rotation + same-session exclusion.
     const seeds = await this.reader.crossDomain(instanceId, 200);
     const pool = seeds.filter((e) => {
       if (e.props?.decayed) return false; // Plan B: stop re-injecting, keep record
+      // §4.3 — two leak mechanisms, two different pools: L0.5 carries *recent
+      // knowledge* (this session's learning), the graph pool carries *everything
+      // the golem has accumulated*. The graph pool is therefore not allowed to
+      // surface this session's own edges — that content is what is being talked
+      // about right now, not something remembered. Edges without a sessionId
+      // (consolidation meta-clusters, persona drift, persona seeds, and every
+      // edge written before the field existed) are settled history and DO leak.
+      if (sessionId && e.sessionId === sessionId) {
+        counts.xdSameSession++;
+        return false;
+      }
       return this.cooldown.available(scope, xdKey(e), CROSS_DOMAIN_COOLDOWN, now);
     });
     for (const { edge, weight, idle } of this.rotate(pool, this.leak.driftLimit, scope)) {
